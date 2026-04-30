@@ -1273,19 +1273,22 @@ function mkBar(row,t,base,CW,dd,ddCol){
     row.appendChild(fl);
   }
 
-  // Actual bar — from actualStart to progress point
-  // Use data date if set, else today — so bar always renders if actualStart exists
+  // ── Actual bar ──
+  // Show whenever task has actualStart + progress, regardless of dataDate setting
   if(t.actualStart && (t.pctComplete||0) > 0){
-    const asCol  = dayOf(t.actualStart, base);
-    const refDay = ddCol > 0 ? ddCol : dayOf(today(), base);  // fallback to today
-    const daysWorked = Math.round(t.dur * (t.pctComplete / 100));
+    const asCol = dayOf(t.actualStart, base);
+    // How many days of work done = duration × % complete
+    const daysWorked = Math.max(1, Math.round(t.dur * (t.pctComplete / 100)));
+    // Cap at dataDate column if set, otherwise use asCol + daysWorked
+    const refDay = ddCol > 0 ? ddCol : asCol + daysWorked;
     const acCol  = Math.min(refDay, asCol + daysWorked);
-    const w = Math.max(1, (acCol - asCol)) * CW;  // min 1px so it's always visible
+    // Ensure minimum 1 cell width so bar is always visible
+    const barWidth = Math.max(CW * 0.8, (Math.max(1, acCol - asCol)) * CW);
     const ba = document.createElement('div');
     ba.className = 'bar-act';
     ba.style.left  = (asCol * CW) + 'px';
-    ba.style.width = w + 'px';
-    ba.title = `Actual: ${t.actualStart} → ${addD(base,acCol)} (${t.pctComplete}% done)`;
+    ba.style.width = barWidth + 'px';
+    ba.title = `Actual: ${t.actualStart} (${t.pctComplete}% done, ${daysWorked}d worked)`;
     row.appendChild(ba);
   }
 
@@ -1582,12 +1585,15 @@ function saveUpdate(){
     t.pctComplete=newCum;
 
     // ── Auto-set actualStart when work begins ──
-    // If task now has progress but no actualStart recorded, use data date (or today)
     if(newCum>0 && !t.actualStart){
-      t.actualStart = dd;
-      logActivity(`เริ่มงาน: ${t.name} (${dd})`,'green');
+      // Use dataDate if set, otherwise today
+      t.actualStart = S.meta.dataDate || today();
+      // Also ensure project startDate <= actualStart
+      if(S.meta.startDate > t.actualStart){
+        S.meta.startDate = t.actualStart;
+      }
+      logActivity(`เริ่มงาน: ${t.name} (${t.actualStart})`,'green');
     }
-    // If task is reset to 0, clear actualStart
     if(newCum===0 && !hasSubs) t.actualStart=null;
 
     if(!t.progressLog) t.progressLog={};
@@ -2480,14 +2486,15 @@ function createNewProject(){
   // Save current first
   saveCurrentProject();
   // Start fresh
-  S={meta:{name,startDate:dStr(new Date()),dataDate:'',contractValue:25000000},
+  const todayStr = today();
+  S={meta:{name,startDate:todayStr,dataDate:todayStr,contractValue:25000000},
      tasks:[],milestones:[],materials:[],nextId:1,nextMsId:1,nextMatId:1,activity:[]};
   saveCurrentProject();
   localStorage.setItem('pmis_r3', JSON.stringify(S));
   localStorage.setItem('pmis_r3_lastKey', name);
   document.getElementById('projNameDisplay').textContent=name;
-  document.getElementById('ddInput').value='';
-  document.getElementById('ddChip').textContent='DD: not set';
+  document.getElementById('ddInput').value=todayStr;
+  document.getElementById('ddChip').textContent='DD: '+todayStr;
   document.getElementById('newProjName').value='';
   runCPM();
   closeModal('projModal');
@@ -2595,7 +2602,15 @@ function load(){
 }
 function exportData(){ const b=new Blob([JSON.stringify(S,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=(S.meta.name||'pmis')+'_rev3.json'; a.click(); }
 function importData(e){ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>{ try{ S=JSON.parse(ev.target.result); saveCurrentProject(); runCPM(); renderFinance(); renderMaterials(); alert('Import OK'); }catch(err){ alert('Invalid JSON'); } }; r.readAsText(f); }
-function clearAll(){ if(!confirm('Clear all data for current project?')) return; S={meta:{name:S.meta.name||'My Project',startDate:dStr(new Date()),dataDate:'',contractValue:25000000},tasks:[],milestones:[],materials:[],nextId:1,nextMsId:1,nextMatId:1,activity:[]}; save(); runCPM(); }
+function clearAll(){
+  if(!confirm('Clear all data for current project?')) return;
+  const todayStr = today();
+  S={meta:{name:S.meta.name||'My Project',startDate:todayStr,dataDate:todayStr,contractValue:25000000},
+     tasks:[],milestones:[],materials:[],nextId:1,nextMsId:1,nextMatId:1,activity:[]};
+  document.getElementById('ddInput').value = todayStr;
+  document.getElementById('ddChip').textContent = 'DD: '+todayStr;
+  save(); runCPM();
+}
 
 // ═══════════════════════ DEMO DATA ═══════════════════════════
 function loadDemo(){
@@ -3128,6 +3143,13 @@ window.addEventListener('resize',()=>{
   if(document.getElementById('panel-dashboard').classList.contains('on')) renderDash();
 });
 load();
+// Auto-set dataDate to today if not set
+if(!S.meta.dataDate){
+  S.meta.dataDate = today();
+  S.meta.startDate = S.meta.startDate || today();
+  document.getElementById('ddInput').value = S.meta.dataDate;
+  document.getElementById('ddChip').textContent = 'DD: '+S.meta.dataDate;
+}
 // Only load demo if there is genuinely no saved project data
 const _hasData = localStorage.getItem('pmis_r3') || localStorage.getItem('pmis_r3_lastKey');
 if(S.tasks.length) runCPM(); else if(!_hasData) loadDemo(); else runCPM();

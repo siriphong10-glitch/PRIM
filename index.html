@@ -1908,7 +1908,7 @@ async function gsStart(){
   Store.mode='gs';Store.db=gsAdapter;setSync();
   if(!gsToken()){gsShowLogin();return;}
   try{const j=await gsCall({action:'all'});GS.user=j.user;GS.last=j.time;DB.projects=[];DB.members=[];gsApply(j.docs);
-    Store.readonly=GS.user.role==='viewer';Store.loaded=true;gsHideLogin();renderUserChip();afterLoad();gsPoll();}
+    Store.readonly=GS.user.role==='viewer';Store.loaded=true;gsHideLogin();renderUserChip();afterLoad();gsPoll();gsCheckPending();}
   catch(e){if(e.code==='not_logged_in')gsShowLogin();else{gsShowLogin('เชื่อมต่อฐานข้อมูลไม่ได้ ('+(e.message||'')+') — ตรวจสอบอินเทอร์เน็ต หรือ URL ของฐานข้อมูล');}}
 }
 function gsPoll(){clearInterval(GS.timer);GS.timer=setInterval(async()=>{if(document.hidden||!GS.user)return;
@@ -1923,25 +1923,53 @@ function gsShowLogin(msg){
     <div class="f hidden" id="lgDnW" style="margin-top:10px"><label>ชื่อที่แสดง</label><input id="lgDn" placeholder="เช่น สิริพงศ์ เกิดบุญมา"></div>
     <div class="f" style="margin-top:10px"><label>รหัสผ่าน</label><input id="lgP" type="password" autocomplete="current-password"></div>
     <button class="btn p" style="width:100%;margin-top:16px;padding:9px" id="lgBtn">เข้าสู่ระบบ</button>
-    <div style="display:flex;justify-content:space-between;margin-top:14px;font-size:12px"><a href="javascript:void(0)" onclick="openGsSetup()">ตั้งค่าการเชื่อมต่อ</a><span class="muted">ลืมรหัสผ่าน ติดต่อผู้ดูแลระบบ</span></div></div>`;
+    <div id="lgReg" style="margin-top:12px;text-align:center;font-size:13px">ยังไม่มีบัญชี? <a href="javascript:void(0)" onclick="gsShowRegister()"><b>สมัครใช้งาน</b></a></div>
+    <div style="display:flex;justify-content:space-between;margin-top:14px;padding-top:10px;border-top:1px solid var(--line);font-size:12px"><a href="javascript:void(0)" onclick="openGsSetup()">ตั้งค่าการเชื่อมต่อ</a><span class="muted">ลืมรหัสผ่าน ติดต่อผู้ดูแลระบบ</span></div></div>`;
   el.classList.remove('hidden');
   const go=async()=>{const u=$('lgU').value.trim(),p=$('lgP').value;$('lgBtn').disabled=true;$('lgBtn').textContent='กำลังเข้าสู่ระบบ…';
     try{const j=await gsCall({action:'login',username:u,password:p,displayName:$('lgDn').value.trim()});try{localStorage.setItem(GS_TOK,j.token);}catch(e){}
       if(Store.loaded){GS.user=j.user;Store.readonly=j.user.role==='viewer';gsHideLogin();renderUserChip();gsPoll();Store.pending.forEach((g,k)=>flush(k));}else gsStart();}
     catch(e){$('lgMsg').className='banner warn';$('lgMsg').textContent=e.message==='network'?'เชื่อมต่อฐานข้อมูลไม่ได้':e.message;$('lgBtn').disabled=false;$('lgBtn').textContent='เข้าสู่ระบบ';}};
   $('lgBtn').onclick=go;$('lgP').onkeydown=e=>{if(e.key==='Enter')go();};
-  gsCall({action:'ping'}).then(j=>{if(j.needSetup){$('lgSetup').classList.remove('hidden');$('lgDnW').classList.remove('hidden');$('lgBtn').textContent='สร้างบัญชีผู้ดูแลระบบ';}}).catch(()=>{});
+  gsCall({action:'ping'}).then(j=>{if(j.needSetup){$('lgReg').classList.add('hidden');$('lgSetup').classList.remove('hidden');$('lgDnW').classList.remove('hidden');$('lgBtn').textContent='สร้างบัญชีผู้ดูแลระบบ';}}).catch(()=>{});
   setTimeout(()=>$('lgU')&&$('lgU').focus(),50);
 }
+function gsShowRegister(){
+  const el=$('loginOv');
+  el.innerHTML=`<div class="lg-card"><div class="lg-brand">PRIM</div><div class="lg-sub">สมัครใช้งาน — Project &amp; Resource Integrated Management</div>
+    <div class="banner info" style="margin:12px 0 0">หลังส่งคำขอ ผู้ดูแลระบบจะตรวจสอบและอนุมัติ จึงจะเข้าสู่ระบบได้</div>
+    <div id="rgMsg" class="hidden" style="margin:10px 0 0"></div>
+    <div id="rgForm">
+    <div class="f" style="margin-top:12px"><label>ชื่อ-นามสกุล</label><input id="rgDn" placeholder="เช่น ปฏิภาณ มูลศรี"></div>
+    <div class="f" style="margin-top:8px"><label>ตำแหน่ง / แผนก</label><input id="rgNote" placeholder="เช่น วิศวกรโยธา ฝ่ายโครงสร้าง"></div>
+    <div class="f" style="margin-top:8px"><label>ชื่อผู้ใช้ (ภาษาอังกฤษตัวเล็ก ตัวเลข . _ -)</label><input id="rgU" autocomplete="username" placeholder="เช่น patipan"></div>
+    <div class="f" style="margin-top:8px"><label>รหัสผ่าน (อย่างน้อย 4 ตัวอักษร)</label><input id="rgP" type="password" autocomplete="new-password"></div>
+    <div class="f" style="margin-top:8px"><label>ยืนยันรหัสผ่าน</label><input id="rgP2" type="password" autocomplete="new-password"></div>
+    <button class="btn p" style="width:100%;margin-top:14px;padding:9px" id="rgBtn">ส่งคำขอสมัครใช้งาน</button></div>
+    <div style="margin-top:12px;text-align:center;font-size:13px"><a href="javascript:void(0)" onclick="gsShowLogin()">← กลับไปหน้าเข้าสู่ระบบ</a></div></div>`;
+  const msg=(t,ok)=>{const m=$('rgMsg');m.className='banner '+(ok?'info':'warn');m.innerHTML=t;};
+  $('rgU').oninput=e=>{e.target.value=e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g,'');};
+  $('rgBtn').onclick=async()=>{
+    const u=$('rgU').value.trim(),dn=$('rgDn').value.trim(),p=$('rgP').value;
+    if(!dn){msg('กรุณากรอกชื่อ-นามสกุล');return;}if(!/^[a-z0-9._-]{2,40}$/.test(u)){msg('ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - (2–40 ตัว)');return;}
+    if(p.length<4){msg('รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร');return;}if(p!==$('rgP2').value){msg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');return;}
+    $('rgBtn').disabled=true;$('rgBtn').textContent='กำลังส่งคำขอ…';
+    try{await gsCall({action:'register',username:u,displayName:dn,password:p,note:$('rgNote').value.trim()});
+      $('rgForm').classList.add('hidden');msg(`✅ ส่งคำขอเรียบร้อย<br>ชื่อผู้ใช้ของคุณคือ <b>${esc(u)}</b> — เมื่อผู้ดูแลระบบอนุมัติแล้ว เข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านที่ตั้งไว้ได้ทันที`,true);}
+    catch(e){msg(e.message==='unknown_action'?'ระบบยังไม่เปิดรับสมัคร — ผู้ดูแลระบบต้องอัปเดตฐานข้อมูลก่อน':e.message==='network'?'เชื่อมต่อฐานข้อมูลไม่ได้':esc(e.message));$('rgBtn').disabled=false;$('rgBtn').textContent='ส่งคำขอสมัครใช้งาน';}};
+  setTimeout(()=>$('rgDn')&&$('rgDn').focus(),50);
+}
+async function gsCheckPending(){if(!GS.user||GS.user.role!=='admin')return;
+  try{const j=await gsCall({action:'pendingCount'});GS.pending=j.count||0;renderUserChip();if(GS.pending)toast('มีคำขอสมัครใช้งานรออนุมัติ '+GS.pending+' รายการ — คลิกชื่อมุมขวาบน → จัดการผู้ใช้งาน');}catch(e){}}
 function gsHideLogin(){const el=$('loginOv');if(el)el.classList.add('hidden');}
 const ROLE_TH={admin:'ผู้ดูแลระบบ',editor:'แก้ไขได้',viewer:'ดูอย่างเดียว'};
 function renderUserChip(){let c=$('userChip');if(!c){c=document.createElement('button');c.id='userChip';c.onclick=openUserMenu;$('syncChip').after(c);}
-  c.innerHTML=GS.user?`${avatar({name:GS.user.displayName||GS.user.username,color:'#2f6fed'},22)} <span>${esc(GS.user.displayName||GS.user.username)}</span>`:'';}
+  c.innerHTML=GS.user?`${avatar({name:GS.user.displayName||GS.user.username,color:'#2f6fed'},22)} <span>${esc(GS.user.displayName||GS.user.username)}</span>${GS.pending?`<span class="pill red" title="คำขอสมัครรออนุมัติ">${GS.pending}</span>`:''}`:'';}
 function openUserMenu(){const u=GS.user;if(!u)return;
   openModal(`<div class="mh">${esc(u.displayName||u.username)} <span class="pill blue" style="margin-left:8px">${ROLE_TH[u.role]||u.role}</span><button class="x" onclick="closeModal()">×</button></div>
   <div class="mb" style="display:flex;flex-direction:column;gap:8px">
     <button class="btn" onclick="openChangePw()">🔑 เปลี่ยนรหัสผ่าน</button>
-    ${u.role==='admin'?'<button class="btn" onclick="openUsers()">👤 จัดการผู้ใช้งาน</button><button class="btn" onclick="openGsSetup()">⚙ ตั้งค่าการเชื่อมต่อ / ลิงก์สำหรับทีม</button>':''}
+    ${u.role==='admin'?'<button class="btn" onclick="openUsers()">👤 จัดการผู้ใช้งาน'+(GS.pending?' <span class="pill red">'+GS.pending+' รออนุมัติ</span>':'')+'</button><button class="btn" onclick="openGsSetup()">⚙ ตั้งค่าการเชื่อมต่อ / ลิงก์สำหรับทีม</button>':''}
     <button class="btn d" onclick="gsLogout()">ออกจากระบบ</button></div>`,'sm');}
 async function gsLogout(){try{await gsCall({action:'logout'});}catch(e){}try{localStorage.removeItem(GS_TOK);}catch(e){}location.reload();}
 function openChangePw(){openModal(`<div class="mh">เปลี่ยนรหัสผ่าน<button class="x" onclick="closeModal()">×</button></div>
@@ -1953,16 +1981,25 @@ function openChangePw(){openModal(`<div class="mh">เปลี่ยนรห�
 async function openUsers(){
   let users=[];try{users=(await gsCall({action:'users'})).users;}catch(e){toast(e.message);return;}
   const roleSel=(v,id)=>`<select class="sel" data-role="${id}">${Object.entries(ROLE_TH).map(([k,l])=>`<option value="${k}"${v===k?' selected':''}>${l}</option>`).join('')}</select>`;
+  const pend=users.filter(u=>u.status==='pending');users=users.filter(u=>u.status!=='pending');
+  GS.pending=pend.length;renderUserChip();
+  const pendHtml=pend.length?`<div class="sec">คำขอสมัครใช้งานรออนุมัติ (${pend.length})</div><table class="t" style="margin-bottom:14px"><thead><tr><th>ชื่อ-นามสกุล</th><th>ตำแหน่ง / แผนก</th><th>ชื่อผู้ใช้</th><th>ส่งคำขอเมื่อ</th><th>ให้สิทธิ์</th><th></th></tr></thead><tbody>
+    ${pend.map(u=>`<tr style="background:#fff8e6"><td><b>${esc(u.displayName)}</b><input type="hidden" data-dn="${esc(u.username)}" value="${esc(u.displayName)}"></td><td style="font-size:12px">${esc(u.note||'—')}</td><td class="mono">${esc(u.username)}</td>
+      <td style="font-size:11px">${u.createdAt?esc(String(u.createdAt).slice(0,16).replace('T',' ')):'—'}</td><td>${roleSel('editor',esc(u.username))}</td>
+      <td style="white-space:nowrap"><button class="btn s g" onclick="decideUser('${esc(u.username)}','approve')">อนุมัติ</button> <button class="btn s d" onclick="decideUser('${esc(u.username)}','reject')">ไม่อนุมัติ</button></td></tr>`).join('')}</tbody></table>`:'';
   openModal(`<div class="mh">จัดการผู้ใช้งาน<button class="x" onclick="closeModal()">×</button></div>
-  <div class="mb"><div class="banner info">ผู้ดูแลระบบ = จัดการผู้ใช้ได้ · แก้ไขได้ = สร้าง/แก้แผนงานและบุคลากร · ดูอย่างเดียว = เปิดดูและส่งออกรายงานได้ แต่แก้ไขไม่ได้</div>
+  <div class="mb">${pendHtml}<div class="banner info">ผู้ดูแลระบบ = จัดการผู้ใช้ได้ · แก้ไขได้ = สร้าง/แก้แผนงานและบุคลากร · ดูอย่างเดียว = เปิดดูและส่งออกรายงานได้ แต่แก้ไขไม่ได้</div>
   <table class="t"><thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อที่แสดง</th><th>สิทธิ์</th><th>ใช้งาน</th><th>ตั้งรหัสผ่านใหม่</th><th>เข้าใช้ล่าสุด</th><th></th></tr></thead><tbody>
-  ${users.map(u=>`<tr><td class="mono">${esc(u.username)}</td><td><input class="inp" data-dn="${esc(u.username)}" value="${esc(u.displayName)}" style="width:150px"></td><td>${roleSel(u.role,esc(u.username))}</td>
+  ${users.map(u=>`<tr style="${u.status==='rejected'?'opacity:.55':''}"><td class="mono">${esc(u.username)}${u.status==='rejected'?' <span class="pill gray">ไม่อนุมัติ</span>':''}</td><td><input class="inp" data-dn="${esc(u.username)}" value="${esc(u.displayName)}" style="width:150px"></td><td>${roleSel(u.role,esc(u.username))}</td>
     <td><input type="checkbox" data-act="${esc(u.username)}" ${u.active?'checked':''}></td><td><input class="inp" type="password" data-pw="${esc(u.username)}" placeholder="(ไม่เปลี่ยน)" style="width:110px"></td>
     <td style="font-size:11px">${u.lastLogin?esc(String(u.lastLogin).slice(0,16).replace('T',' ')):'—'}</td><td><button class="btn s" onclick="saveUserRow('${esc(u.username)}')">บันทึก</button></td></tr>`).join('')}
   <tr style="background:#f7f8fb"><td><input class="inp" id="nuU" placeholder="ชื่อผู้ใช้ (a-z 0-9)" style="width:130px"></td><td><input class="inp" id="nuD" placeholder="ชื่อที่แสดง" style="width:150px"></td><td>${roleSel('editor','__new')}</td><td></td>
     <td><input class="inp" id="nuP" type="password" placeholder="รหัสผ่านเริ่มต้น" style="width:110px"></td><td></td><td><button class="btn s p" onclick="saveUserRow(null)">＋ เพิ่ม</button></td></tr>
-  </tbody></table><div class="muted" style="font-size:12px;margin-top:8px">แจ้งชื่อผู้ใช้และรหัสผ่านเริ่มต้นให้แต่ละคน แล้วให้เปลี่ยนรหัสผ่านเองที่เมนูชื่อมุมขวาบน</div></div>`,'lg');
+  </tbody></table><div class="muted" style="font-size:12px;margin-top:8px">ทีมสมัครเองได้ที่ปุ่ม "สมัครใช้งาน" หน้าเข้าสู่ระบบ แล้วอนุมัติที่นี่ — หรือเพิ่มบัญชีให้เองที่แถวล่างสุด แล้วแจ้งชื่อผู้ใช้และรหัสผ่านเริ่มต้น</div></div>`,'lg');
 }
+async function decideUser(name,decision){
+  try{await gsCall({action:'saveUser',username:name,displayName:document.querySelector(`[data-dn="${name}"]`).value,role:document.querySelector(`[data-role="${name}"]`).value,decision});
+    toast(decision==='approve'?'อนุมัติ '+name+' แล้ว — แจ้งให้เข้าสู่ระบบได้เลย':'ไม่อนุมัติคำขอของ '+name);openUsers();}catch(e){toast(e.message);}}
 async function saveUserRow(name){
   const q=name?{username:name,displayName:document.querySelector(`[data-dn="${name}"]`).value,role:document.querySelector(`[data-role="${name}"]`).value,active:document.querySelector(`[data-act="${name}"]`).checked,password:document.querySelector(`[data-pw="${name}"]`).value}
     :{username:$('nuU').value.trim().toLowerCase(),displayName:$('nuD').value.trim(),role:document.querySelector('[data-role="__new"]').value,password:$('nuP').value};
@@ -2014,6 +2051,7 @@ initStore();
  *  4) เปิดเว็บ PRIM → วาง URL ในหน้าตั้งค่าการเชื่อมต่อ → ผู้ที่เข้าสู่ระบบคนแรกจะเป็นผู้ดูแลระบบ (admin)
  *
  * แผ่นงานที่ใช้: data (ข้อมูลโครงการ/บุคลากร), users (ผู้ใช้งาน), log (ประวัติการแก้ไข)
+ * อัปเดตโค้ด: วางโค้ดใหม่ → บันทึก → การทำให้ใช้งานได้ → จัดการการทำให้ใช้งานได้ → ✏️ แก้ไข → เวอร์ชัน "เวอร์ชันใหม่" → การทำให้ใช้งานได้ (URL เดิมใช้ต่อได้)
  */
 const SHEET_ID = '';  // ว่างไว้ = สร้าง Google Sheet "PRIM Database" ให้อัตโนมัติในบัญชีที่ติดตั้งสคริปต์
 const CHUNK = 45000;                       // ขนาดข้อความต่อเซลล์ (เซลล์รับได้ไม่เกิน 50,000 ตัวอักษร)
@@ -2030,10 +2068,11 @@ function sheet_(name, header) {
   let sh = ss.getSheetByName(name);
   if (!sh && name === 'data') { const f = ss.getSheets()[0]; if (f && String(f.getRange(1, 1).getValue()) === 'key') { f.setName('data'); sh = f; } }
   if (!sh) { sh = ss.insertSheet(name); sh.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold'); sh.setFrozenRows(1); }
+  else if (sh.getLastColumn() < header.length) sh.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
   return sh;
 }
 const DATA_H = ['key', 'updatedAt', 'updatedBy', 'deleted', 'json'];
-const USER_H = ['username', 'displayName', 'role', 'salt', 'passHash', 'active', 'createdAt', 'lastLogin'];
+const USER_H = ['username', 'displayName', 'role', 'salt', 'passHash', 'active', 'createdAt', 'lastLogin', 'status', 'note'];
 const LOG_H = ['time', 'user', 'action', 'key'];
 
 function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
@@ -2050,7 +2089,7 @@ function hash_(salt, pass) {
 }
 function users_() {
   const sh = sheet_('users', USER_H); const v = sh.getDataRange().getValues(); const out = [];
-  for (let i = 1; i < v.length; i++) if (v[i][0]) out.push({ row: i + 1, username: String(v[i][0]), displayName: String(v[i][1]), role: String(v[i][2] || 'editor'), salt: String(v[i][3]), passHash: String(v[i][4]), active: v[i][5] !== false && String(v[i][5]).toUpperCase() !== 'FALSE', createdAt: v[i][6], lastLogin: v[i][7] });
+  for (let i = 1; i < v.length; i++) if (v[i][0]) out.push({ row: i + 1, username: String(v[i][0]), displayName: String(v[i][1]), role: String(v[i][2] || 'editor'), salt: String(v[i][3]), passHash: String(v[i][4]), active: v[i][5] !== false && String(v[i][5]).toUpperCase() !== 'FALSE', createdAt: v[i][6], lastLogin: v[i][7], status: String(v[i][8] || ''), note: String(v[i][9] || '') });
   return out;
 }
 function tokGet_(tok) { const v = PropertiesService.getScriptProperties().getProperty('tk_' + tok); try { return v ? JSON.parse(v) : null; } catch (e) { return null; } }
@@ -2066,7 +2105,7 @@ function auth_(token) {
   return u;
 }
 function log_(user, action, key) { try { sheet_('log', LOG_H).appendRow([new Date(), user, action, key || '']); } catch (e) {} }
-function pub_(u) { return { username: u.username, displayName: u.displayName, role: u.role, active: u.active, lastLogin: u.lastLogin }; }
+function pub_(u) { return { username: u.username, displayName: u.displayName, role: u.role, active: u.active, lastLogin: u.lastLogin, status: u.status || '', note: u.note || '', createdAt: u.createdAt }; }
 
 function readAll_(since) {
   const sh = sheet_('data', DATA_H); const v = sh.getDataRange().getValues(); const docs = [];
@@ -2112,14 +2151,33 @@ function route_(q) {
       if (!us.length) { // first user becomes admin
         const salt = Utilities.getUuid(); sheet_('users', USER_H).appendRow([name, q.displayName || name, 'admin', salt, hash_(salt, pass), true, new Date(), new Date()]);
         u = users_()[0]; log_(name, 'create_admin');
-      } else if (!u || !u.active || hash_(u.salt, pass) !== u.passHash) return { ok: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+      } else if (!u || hash_(u.salt, pass) !== u.passHash) return { ok: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+      else if (u.status === 'pending') return { ok: false, error: 'บัญชีนี้ส่งคำขอแล้ว กำลังรอผู้ดูแลระบบอนุมัติ' };
+      else if (u.status === 'rejected') return { ok: false, error: 'คำขอสมัครใช้งานนี้ไม่ได้รับอนุมัติ — ติดต่อผู้ดูแลระบบ' };
+      else if (!u.active) return { ok: false, error: 'บัญชีนี้ถูกปิดการใช้งาน — ติดต่อผู้ดูแลระบบ' };
       const tok = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ''); tokPut_(tok, u.username);
       sheet_('users', USER_H).getRange(u.row, 8).setValue(new Date()); log_(u.username, 'login');
       return { ok: true, token: tok, user: pub_(u) };
     } finally { lock.releaseLock(); }
   }
+  if (a === 'register') {
+    const lock = LockService.getScriptLock(); lock.waitLock(10000);
+    try {
+      const us = users_(); if (!us.length) return { ok: false, error: 'ระบบยังไม่มีผู้ดูแล — กรุณาสร้างบัญชีผู้ดูแลระบบจากหน้าเข้าสู่ระบบก่อน' };
+      const name = String(q.username || '').trim().toLowerCase(); const dn = String(q.displayName || '').trim().slice(0, 80);
+      if (!/^[a-z0-9._-]{2,40}$/.test(name)) return { ok: false, error: 'ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - (2–40 ตัว)' };
+      if (!dn) return { ok: false, error: 'กรุณากรอกชื่อ-นามสกุล' };
+      if (String(q.password || '').length < 4) return { ok: false, error: 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร' };
+      if (us.some(x => x.username.toLowerCase() === name)) return { ok: false, error: 'ชื่อผู้ใช้นี้มีผู้ใช้แล้ว กรุณาเลือกชื่ออื่น' };
+      if (us.filter(x => x.status === 'pending').length >= 50) return { ok: false, error: 'มีคำขอรออนุมัติจำนวนมาก กรุณาติดต่อผู้ดูแลระบบ' };
+      const salt = Utilities.getUuid();
+      sheet_('users', USER_H).appendRow([name, dn, 'viewer', salt, hash_(salt, String(q.password)), false, new Date(), '', 'pending', String(q.note || '').slice(0, 200)]);
+      log_(name, 'register'); return { ok: true };
+    } finally { lock.releaseLock(); }
+  }
   const u = auth_(q.token);
   if (a === 'me') return { ok: true, user: pub_(u) };
+  if (a === 'pendingCount') return { ok: true, count: u.role === 'admin' ? users_().filter(x => x.status === 'pending').length : 0 };
   if (a === 'logout') { PropertiesService.getScriptProperties().deleteProperty('tk_' + q.token); return { ok: true }; }
   if (a === 'all') { seedIfEmpty_(); }
   if (a === 'all') return { ok: true, time: Date.now(), docs: readAll_(0), user: pub_(u) };
@@ -2146,12 +2204,15 @@ function route_(q) {
     if (ex) {
       if (ex.username === u.username && role !== 'admin') return { ok: false, error: 'เปลี่ยนสิทธิ์ของตัวเองไม่ได้' };
       sh.getRange(ex.row, 2, 1, 2).setValues([[q.displayName || name, role]]); sh.getRange(ex.row, 6).setValue(q.active !== false);
+      if (q.decision === 'approve') { sh.getRange(ex.row, 6).setValue(true); sh.getRange(ex.row, 9).setValue(''); }
+      else if (q.decision === 'reject') { sh.getRange(ex.row, 6).setValue(false); sh.getRange(ex.row, 9).setValue('rejected'); }
+      else if (ex.status === 'pending') sh.getRange(ex.row, 6).setValue(false);
       if (q.password) { if (String(q.password).length < 4) return { ok: false, error: 'รหัสผ่านอย่างน้อย 4 ตัวอักษร' }; const salt = Utilities.getUuid(); sh.getRange(ex.row, 4, 1, 2).setValues([[salt, hash_(salt, String(q.password))]]); }
     } else {
       if (String(q.password || '').length < 4) return { ok: false, error: 'ต้องกำหนดรหัสผ่านเริ่มต้น (อย่างน้อย 4 ตัวอักษร)' };
-      const salt = Utilities.getUuid(); sh.appendRow([name, q.displayName || name, role, salt, hash_(salt, String(q.password)), true, new Date(), '']);
+      const salt = Utilities.getUuid(); sh.appendRow([name, q.displayName || name, role, salt, hash_(salt, String(q.password)), true, new Date(), '', '', '']);
     }
-    log_(u.username, 'save_user', name); return { ok: true, users: users_().map(pub_) };
+    log_(u.username, q.decision ? q.decision + '_user' : 'save_user', name); return { ok: true, users: users_().map(pub_) };
   }
   return { ok: false, error: 'unknown_action' };
 }

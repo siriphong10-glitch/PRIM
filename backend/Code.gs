@@ -12,6 +12,7 @@
  *  4) เปิดเว็บ PRIM → วาง URL ในหน้าตั้งค่าการเชื่อมต่อ → ผู้ที่เข้าสู่ระบบคนแรกจะเป็นผู้ดูแลระบบ (admin)
  *
  * แผ่นงานที่ใช้: data (ข้อมูลโครงการ/บุคลากร), users (ผู้ใช้งาน), log (ประวัติการแก้ไข)
+ * อัปเดตโค้ด: วางโค้ดใหม่ → บันทึก → การทำให้ใช้งานได้ → จัดการการทำให้ใช้งานได้ → ✏️ แก้ไข → เวอร์ชัน "เวอร์ชันใหม่" → การทำให้ใช้งานได้ (URL เดิมใช้ต่อได้)
  */
 const SHEET_ID = '';  // ว่างไว้ = สร้าง Google Sheet "PRIM Database" ให้อัตโนมัติในบัญชีที่ติดตั้งสคริปต์
 const CHUNK = 45000;                       // ขนาดข้อความต่อเซลล์ (เซลล์รับได้ไม่เกิน 50,000 ตัวอักษร)
@@ -28,10 +29,11 @@ function sheet_(name, header) {
   let sh = ss.getSheetByName(name);
   if (!sh && name === 'data') { const f = ss.getSheets()[0]; if (f && String(f.getRange(1, 1).getValue()) === 'key') { f.setName('data'); sh = f; } }
   if (!sh) { sh = ss.insertSheet(name); sh.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold'); sh.setFrozenRows(1); }
+  else if (sh.getLastColumn() < header.length) sh.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold');
   return sh;
 }
 const DATA_H = ['key', 'updatedAt', 'updatedBy', 'deleted', 'json'];
-const USER_H = ['username', 'displayName', 'role', 'salt', 'passHash', 'active', 'createdAt', 'lastLogin'];
+const USER_H = ['username', 'displayName', 'role', 'salt', 'passHash', 'active', 'createdAt', 'lastLogin', 'status', 'note'];
 const LOG_H = ['time', 'user', 'action', 'key'];
 
 function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
@@ -48,7 +50,7 @@ function hash_(salt, pass) {
 }
 function users_() {
   const sh = sheet_('users', USER_H); const v = sh.getDataRange().getValues(); const out = [];
-  for (let i = 1; i < v.length; i++) if (v[i][0]) out.push({ row: i + 1, username: String(v[i][0]), displayName: String(v[i][1]), role: String(v[i][2] || 'editor'), salt: String(v[i][3]), passHash: String(v[i][4]), active: v[i][5] !== false && String(v[i][5]).toUpperCase() !== 'FALSE', createdAt: v[i][6], lastLogin: v[i][7] });
+  for (let i = 1; i < v.length; i++) if (v[i][0]) out.push({ row: i + 1, username: String(v[i][0]), displayName: String(v[i][1]), role: String(v[i][2] || 'editor'), salt: String(v[i][3]), passHash: String(v[i][4]), active: v[i][5] !== false && String(v[i][5]).toUpperCase() !== 'FALSE', createdAt: v[i][6], lastLogin: v[i][7], status: String(v[i][8] || ''), note: String(v[i][9] || '') });
   return out;
 }
 function tokGet_(tok) { const v = PropertiesService.getScriptProperties().getProperty('tk_' + tok); try { return v ? JSON.parse(v) : null; } catch (e) { return null; } }
@@ -64,7 +66,7 @@ function auth_(token) {
   return u;
 }
 function log_(user, action, key) { try { sheet_('log', LOG_H).appendRow([new Date(), user, action, key || '']); } catch (e) {} }
-function pub_(u) { return { username: u.username, displayName: u.displayName, role: u.role, active: u.active, lastLogin: u.lastLogin }; }
+function pub_(u) { return { username: u.username, displayName: u.displayName, role: u.role, active: u.active, lastLogin: u.lastLogin, status: u.status || '', note: u.note || '', createdAt: u.createdAt }; }
 
 function readAll_(since) {
   const sh = sheet_('data', DATA_H); const v = sh.getDataRange().getValues(); const docs = [];
@@ -110,14 +112,33 @@ function route_(q) {
       if (!us.length) { // first user becomes admin
         const salt = Utilities.getUuid(); sheet_('users', USER_H).appendRow([name, q.displayName || name, 'admin', salt, hash_(salt, pass), true, new Date(), new Date()]);
         u = users_()[0]; log_(name, 'create_admin');
-      } else if (!u || !u.active || hash_(u.salt, pass) !== u.passHash) return { ok: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+      } else if (!u || hash_(u.salt, pass) !== u.passHash) return { ok: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+      else if (u.status === 'pending') return { ok: false, error: 'บัญชีนี้ส่งคำขอแล้ว กำลังรอผู้ดูแลระบบอนุมัติ' };
+      else if (u.status === 'rejected') return { ok: false, error: 'คำขอสมัครใช้งานนี้ไม่ได้รับอนุมัติ — ติดต่อผู้ดูแลระบบ' };
+      else if (!u.active) return { ok: false, error: 'บัญชีนี้ถูกปิดการใช้งาน — ติดต่อผู้ดูแลระบบ' };
       const tok = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, ''); tokPut_(tok, u.username);
       sheet_('users', USER_H).getRange(u.row, 8).setValue(new Date()); log_(u.username, 'login');
       return { ok: true, token: tok, user: pub_(u) };
     } finally { lock.releaseLock(); }
   }
+  if (a === 'register') {
+    const lock = LockService.getScriptLock(); lock.waitLock(10000);
+    try {
+      const us = users_(); if (!us.length) return { ok: false, error: 'ระบบยังไม่มีผู้ดูแล — กรุณาสร้างบัญชีผู้ดูแลระบบจากหน้าเข้าสู่ระบบก่อน' };
+      const name = String(q.username || '').trim().toLowerCase(); const dn = String(q.displayName || '').trim().slice(0, 80);
+      if (!/^[a-z0-9._-]{2,40}$/.test(name)) return { ok: false, error: 'ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ - (2–40 ตัว)' };
+      if (!dn) return { ok: false, error: 'กรุณากรอกชื่อ-นามสกุล' };
+      if (String(q.password || '').length < 4) return { ok: false, error: 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร' };
+      if (us.some(x => x.username.toLowerCase() === name)) return { ok: false, error: 'ชื่อผู้ใช้นี้มีผู้ใช้แล้ว กรุณาเลือกชื่ออื่น' };
+      if (us.filter(x => x.status === 'pending').length >= 50) return { ok: false, error: 'มีคำขอรออนุมัติจำนวนมาก กรุณาติดต่อผู้ดูแลระบบ' };
+      const salt = Utilities.getUuid();
+      sheet_('users', USER_H).appendRow([name, dn, 'viewer', salt, hash_(salt, String(q.password)), false, new Date(), '', 'pending', String(q.note || '').slice(0, 200)]);
+      log_(name, 'register'); return { ok: true };
+    } finally { lock.releaseLock(); }
+  }
   const u = auth_(q.token);
   if (a === 'me') return { ok: true, user: pub_(u) };
+  if (a === 'pendingCount') return { ok: true, count: u.role === 'admin' ? users_().filter(x => x.status === 'pending').length : 0 };
   if (a === 'logout') { PropertiesService.getScriptProperties().deleteProperty('tk_' + q.token); return { ok: true }; }
   if (a === 'all') { seedIfEmpty_(); }
   if (a === 'all') return { ok: true, time: Date.now(), docs: readAll_(0), user: pub_(u) };
@@ -144,12 +165,15 @@ function route_(q) {
     if (ex) {
       if (ex.username === u.username && role !== 'admin') return { ok: false, error: 'เปลี่ยนสิทธิ์ของตัวเองไม่ได้' };
       sh.getRange(ex.row, 2, 1, 2).setValues([[q.displayName || name, role]]); sh.getRange(ex.row, 6).setValue(q.active !== false);
+      if (q.decision === 'approve') { sh.getRange(ex.row, 6).setValue(true); sh.getRange(ex.row, 9).setValue(''); }
+      else if (q.decision === 'reject') { sh.getRange(ex.row, 6).setValue(false); sh.getRange(ex.row, 9).setValue('rejected'); }
+      else if (ex.status === 'pending') sh.getRange(ex.row, 6).setValue(false);
       if (q.password) { if (String(q.password).length < 4) return { ok: false, error: 'รหัสผ่านอย่างน้อย 4 ตัวอักษร' }; const salt = Utilities.getUuid(); sh.getRange(ex.row, 4, 1, 2).setValues([[salt, hash_(salt, String(q.password))]]); }
     } else {
       if (String(q.password || '').length < 4) return { ok: false, error: 'ต้องกำหนดรหัสผ่านเริ่มต้น (อย่างน้อย 4 ตัวอักษร)' };
-      const salt = Utilities.getUuid(); sh.appendRow([name, q.displayName || name, role, salt, hash_(salt, String(q.password)), true, new Date(), '']);
+      const salt = Utilities.getUuid(); sh.appendRow([name, q.displayName || name, role, salt, hash_(salt, String(q.password)), true, new Date(), '', '', '']);
     }
-    log_(u.username, 'save_user', name); return { ok: true, users: users_().map(pub_) };
+    log_(u.username, q.decision ? q.decision + '_user' : 'save_user', name); return { ok: true, users: users_().map(pub_) };
   }
   return { ok: false, error: 'unknown_action' };
 }

@@ -100,6 +100,59 @@ function seedIfEmpty_() {
   p.setProperty('seeded', '1');
 }
 
+/* ═══════ ปฏิทิน Google (ลงนัดเมื่อผู้ใช้กดสั่งเท่านั้น) ═══════ */
+const CAL_H = ['key', 'eventId', 'hash', 'batch', 'createdBy', 'updatedAt', 'title', 'start'];
+const CAL_NAME = 'PRIM — ตารางงาน';
+function authorizeCalendar() { cal_(); return 'ok'; }   // กด "เรียกใช้" ฟังก์ชันนี้ 1 ครั้งเพื่ออนุญาตสิทธิ์ปฏิทิน
+function cal_() {
+  const p = PropertiesService.getScriptProperties(); const id = p.getProperty('calendarId');
+  if (id) { const c = CalendarApp.getCalendarById(id); if (c) return c; }
+  const found = CalendarApp.getCalendarsByName(CAL_NAME)[0];
+  const c = found || CalendarApp.createCalendar(CAL_NAME, { timeZone: 'Asia/Bangkok', color: CalendarApp.Color.BLUE });
+  p.setProperty('calendarId', c.getId()); return c;
+}
+function calRows_() {
+  const sh = sheet_('calendar', CAL_H); const v = sh.getDataRange().getValues(); const out = {};
+  for (let i = 1; i < v.length; i++) if (v[i][0]) out[String(v[i][0])] = { row: i + 1, key: String(v[i][0]), eventId: String(v[i][1]), hash: String(v[i][2]), batch: String(v[i][3]), title: String(v[i][6]), start: String(v[i][7]) };
+  return out;
+}
+function calStatus_(prefix) { const r = calRows_(); return Object.values(r).filter(x => x.key.indexOf(prefix) === 0).map(x => ({ key: x.key, hash: x.hash, batch: x.batch, title: x.title, start: x.start })); }
+function setGuests_(ev, emails) {
+  const want = new Set((emails || []).map(e => String(e).toLowerCase())); const have = ev.getGuestList().map(g => g.getEmail().toLowerCase());
+  have.forEach(e => { if (!want.has(e)) ev.removeGuest(e); }); want.forEach(e => { if (have.indexOf(e) < 0) ev.addGuest(e); });
+}
+function calPush_(q, user) {
+  const c = cal_(); const sh = sheet_('calendar', CAL_H); const rows = calRows_(); const batch = 'b' + Date.now();
+  const res = { created: 0, updated: 0, deleted: 0, batch: batch, errors: [] };
+  (q.deletes || []).forEach(key => {
+    const r = rows[key]; if (!r) return;
+    try { const ev = c.getEventById(r.eventId); if (ev) ev.deleteEvent(); } catch (e) {}
+    sh.getRange(r.row, 1, 1, CAL_H.length).clearContent(); res.deleted++;
+  });
+  (q.events || []).slice(0, 300).forEach(e => {
+    try {
+      const st = new Date(e.start), en = new Date(e.end); const r = rows[e.key];
+      let ev = null; if (r && r.eventId) { try { ev = c.getEventById(r.eventId); } catch (x) { ev = null; } }
+      if (ev) {
+        ev.setTitle(e.title); ev.setTime(st, en); ev.setDescription(e.description || ''); if (q.invite) setGuests_(ev, e.guests);
+        sh.getRange(r.row, 1, 1, CAL_H.length).setValues([[e.key, ev.getId(), e.hash, r.batch, user, new Date(), e.title, e.start]]); res.updated++;
+      } else {
+        const opt = { description: e.description || '' }; if (q.invite && e.guests && e.guests.length) { opt.guests = e.guests.join(','); opt.sendInvites = true; }
+        ev = c.createEvent(e.title, st, en, opt);
+        const vals = [[e.key, ev.getId(), e.hash, batch, user, new Date(), e.title, e.start]];
+        if (r) sh.getRange(r.row, 1, 1, CAL_H.length).setValues(vals); else sh.appendRow(vals[0]);
+        res.created++;
+      }
+    } catch (err) { res.errors.push(e.key + ': ' + err.message); }
+  });
+  return res;
+}
+function calUndo_(batch) {
+  const c = cal_(); const sh = sheet_('calendar', CAL_H); let n = 0;
+  Object.values(calRows_()).filter(r => r.batch === batch).forEach(r => { try { const ev = c.getEventById(r.eventId); if (ev) ev.deleteEvent(); } catch (e) {} sh.getRange(r.row, 1, 1, CAL_H.length).clearContent(); n++; });
+  return n;
+}
+
 function route_(q) {
   const a = q.action;
   if (a === 'ping') return { ok: true, time: Date.now(), needSetup: users_().length === 0 };
@@ -155,6 +208,15 @@ function route_(q) {
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try { const ts = write_(String(q.key), q.data, u.username, a === 'delete'); log_(u.username, a, q.key); return { ok: true, updatedAt: ts }; }
     finally { lock.releaseLock(); }
+  }
+  if (a === 'calStatus') return { ok: true, items: calStatus_(String(q.prefix || '')), calendar: CAL_NAME };
+  if (a === 'calPush' || a === 'calUndo') {
+    if (u.role === 'viewer') return { ok: false, error: 'read_only' };
+    const lock = LockService.getScriptLock(); lock.waitLock(25000);
+    try {
+      if (a === 'calPush') { const r = calPush_(q, u.username); log_(u.username, 'calendar_push', (q.events || []).length + ' events / ' + (q.deletes || []).length + ' deletes'); return Object.assign({ ok: true, calendar: CAL_NAME }, r); }
+      const n = calUndo_(String(q.batch || '')); log_(u.username, 'calendar_undo', q.batch); return { ok: true, deleted: n };
+    } finally { lock.releaseLock(); }
   }
   if (a === 'users') { if (u.role !== 'admin') return { ok: false, error: 'admin_only' }; return { ok: true, users: users_().map(pub_) }; }
   if (a === 'saveUser') {

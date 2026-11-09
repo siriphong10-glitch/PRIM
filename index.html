@@ -130,6 +130,7 @@ table.avt td.c:hover{outline:2px solid var(--blue);outline-offset:-2px}
 td.c.free{background:#effaf3;color:#9ad4b3}
 td.c.b1{background:#e3ecff;color:var(--blue)}
 td.c.b2{background:#ffe1e4;color:var(--red)}
+td.c.bh{background:linear-gradient(135deg,#e3ecff 50%,#effaf3 50%);color:var(--blue);font-size:10px}
 td.c.leave{background:repeating-linear-gradient(45deg,#eceef2,#eceef2 4px,#f6f7f9 4px,#f6f7f9 8px);color:var(--ink2);font-family:var(--sans);font-weight:500}
 td.c.wkend,th.wkend{background-color:#f7f7f9}
 td.c.wkend.free{background:#f4f6f5;color:#cdd8d1}
@@ -168,6 +169,9 @@ table.dg thead .mcol{z-index:3;background:#fafbfc}
 table.dg td.dc{width:32px;height:28px;cursor:pointer;position:relative}
 table.dg td.dc.on{background:var(--blue);color:#fff}
 table.dg td.dc.ov{box-shadow:inset 0 0 0 2px var(--amber)}
+table.dg td.dc.sov{text-decoration:underline;font-weight:700}
+table.dg td.dc{font-size:10px;font-family:var(--mono)}
+.slotpop{position:fixed;z-index:500;background:#fff;border:1px solid var(--line2);border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px 12px;width:230px;font-size:12.5px}
 table.dg td.dc.leave{background:#eceef2;color:var(--ink3);cursor:not-allowed}
 table.dg td.dc .cf{position:absolute;top:2px;right:2px;width:6px;height:6px;border-radius:50%;background:var(--red)}
 #drawer{position:fixed;top:52px;right:0;bottom:0;width:min(400px,100%);background:#fff;border-left:1px solid var(--line);box-shadow:-10px 0 30px rgba(0,0,0,.08);z-index:60;transform:translateX(105%);transition:transform .2s;display:flex;flex-direction:column}
@@ -224,6 +228,7 @@ canvas{display:block;width:100%}
       <button class="btn p" onclick="openTask()">＋ งานย่อย</button>
       <button class="btn" onclick="openProgress()">⟳ อัปเดตความก้าวหน้า</button>
       <button class="btn" onclick="openProjTeam()">👥 ทีมโครงการ</button>
+      <button class="btn" onclick="openCalendar()" title="ตรวจรายการแล้วลงนัดในปฏิทิน Google">📅 ลงปฏิทิน</button>
       <button class="btn" onclick="collapseAll(true)" title="ย่อทุกหัวข้อ">⊟</button><button class="btn" onclick="collapseAll(false)" title="ขยายทุกหัวข้อ">⊞</button>
       <button class="btn g" onclick="openExport()">↓ ส่งออกแผนงาน</button>
       <span class="sp"></span>
@@ -261,8 +266,9 @@ canvas{display:block;width:100%}
     </div>
     <div class="legend" style="margin-bottom:8px">
       <span><i style="background:#effaf3;border:1px solid #cfe9da"></i>ว่าง</span>
-      <span><i style="background:#e3ecff"></i>มีงาน 1 งาน</span>
-      <span><i style="background:#ffe1e4"></i>งานซ้อน ≥ 2 งาน</span>
+      <span><i style="background:#e3ecff"></i>มีงานเต็มวัน</span>
+      <span><i style="background:linear-gradient(135deg,#e3ecff 50%,#effaf3 50%)"></i>มีงานครึ่งวัน (ช = เช้า, บ = บ่าย, O = OT)</span>
+      <span><i style="background:#ffe1e4"></i>งานซ้อนในช่วงเวลาเดียวกัน</span>
       <span><i style="background:#eceef2"></i>ลา</span>
       <span class="muted">· แถบสีเล็กใต้ช่อง = สีโปรเจกต์ · คลิกช่องเพื่อดู/มอบหมายงานรายวัน</span>
     </div>
@@ -321,6 +327,7 @@ const fmtS=s=>{if(!s)return '—';const d=pd(s);return d.getDate()+' '+TH_M[d.ge
 const fmtDw=s=>{if(!s)return '—';const d=pd(s);return TH_D[d.getDay()]+' '+fmtD(s);};
 const uid=p=>p+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const clone=o=>JSON.parse(JSON.stringify(o));
+const abbrOf=m=>m?(String(m.abbr||'').trim()||initials(m.name)):'';
 const initials=n=>{n=String(n||'?').trim();const w=n.split(/\s+/);return (w.length>1?w[0][0]+w[1][0]:n.slice(0,2)).toUpperCase();};
 const pct1=v=>(Math.round(v*10)/10).toFixed(1);
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2400);}
@@ -413,7 +420,8 @@ function sanitizeProject(p){
     plannedStart:isDate(t.plannedStart)?t.plannedStart:'',actualStart:isDate(t.actualStart)?t.actualStart:'',actualFinish:isDate(t.actualFinish)?t.actualFinish:'',
     pct:Math.min(100,Math.max(0,+t.pct||0)),weight:t.weight===''||t.weight==null?'':+t.weight,note:String(t.note||''),
     preds:Array.isArray(t.preds)?t.preds.map(r=>({id:+r.id,type:['FS','SS','FF','SF'].includes(r.type)?r.type:'FS',lag:+r.lag||0})):[],
-    assignees:Array.isArray(t.assignees)?t.assignees.map(String):[],daily:t.daily&&typeof t.daily==='object'?t.daily:{}}));
+    assignees:Array.isArray(t.assignees)?t.assignees.map(String):[],daily:t.daily&&typeof t.daily==='object'?t.daily:{},
+    slots:Array.isArray(t.slots)?t.slots.filter(k=>SLOT_KEYS.includes(k)):['AM','PM'],pslots:t.pslots&&typeof t.pslots==='object'?t.pslots:{}}));
   q.nextTask=Math.max(q.nextTask,...q.tasks.map(t=>t.id+1),1);
   if(!q.team){const ids=new Set();q.tasks.forEach(t=>{(t.assignees||[]).forEach(i=>ids.add(i));Object.values(t.daily||{}).forEach(a=>Array.isArray(a)&&a.forEach(i=>ids.add(i)));});q.team=[...ids].map(id=>({id,role:''}));}
   const sumIds=new Set(q.tasks.filter(isSum).map(t=>t.id));
@@ -589,6 +597,15 @@ function taskWorkDates(p,inf){ // working dates the task occupies (current sched
   return out;
 }
 const assigneesOn=(t,d)=>(t.daily&&Array.isArray(t.daily[d]))?t.daily[d]:(t.assignees||[]);
+/* ช่วงเวลาทำงานใน 1 วัน */
+const SLOTS={AM:{l:'ช่วงเช้า',s:'ช',from:'09:00',to:'13:00'},PM:{l:'ช่วงบ่าย',s:'บ',from:'14:00',to:'18:00'},OT:{l:'OT',s:'O',from:'18:00',to:'20:00'}};
+const SLOT_KEYS=['AM','PM','OT'];
+const taskSlots=t=>Array.isArray(t.slots)&&t.slots.length?t.slots:['AM','PM'];
+const slotsOn=(t,d,mid)=>{const o=t.pslots&&t.pslots[d+'|'+mid];return Array.isArray(o)&&o.length?o:taskSlots(t);};
+const slotTxt=a=>SLOT_KEYS.filter(k=>a.includes(k)).map(k=>SLOTS[k].s).join('');
+const slotRange=a=>{const k=SLOT_KEYS.filter(x=>a.includes(x));return k.map(x=>SLOTS[x].from+'–'+SLOTS[x].to).join(', ');};
+function slotClash(items){const c={};return (items||[]).some(x=>(x.slots||['AM','PM']).some(k=>(c[k]=(c[k]||0)+1)>1));}
+function slotBusy(items){const u=new Set();(items||[]).forEach(x=>(x.slots||[]).forEach(k=>u.add(k)));return u;}
 function weightOf(t){return t.weight!==''&&t.weight!=null&&!isNaN(+t.weight)?+t.weight:Math.max(1,+t.dur||0);}
 function projStats(p){
   const S=sched(p);let w=0,a=0,pl=0;
@@ -607,7 +624,7 @@ function buildLoad(projects,from,to){
     leaves(p).forEach(t=>{const inf=S.info[t.id];if(!inf||inf.cyc)return;
       if(inf.f<from||inf.s>to)return;
       taskWorkDates(p,inf).forEach(d=>{if(d<from||d>to)return;
-        assigneesOn(t,d).forEach(mid=>{(L[mid]=L[mid]||{});(L[mid][d]=L[mid][d]||[]).push({p,t});});});
+        assigneesOn(t,d).forEach(mid=>{(L[mid]=L[mid]||{});(L[mid][d]=L[mid][d]||[]).push({p,t,slots:slotsOn(t,d,mid)});});});
     });});
   return L;
 }
@@ -649,7 +666,7 @@ function renderDash(){
   const lateT=leaves(p).filter(t=>{const i=S.info[t.id];return i&&i.late&&(+t.pct||0)<100;});
   const from=dd,to=addDays(dd,13);const L=buildLoad([p],from,to);const days=dateRange(from,to).filter(d=>isWorkDay(p,d));
   const La=buildLoad(DB.projects.filter(q=>q.status!=='closed'),from,to);const team=projTeam(p);
-  const overM=team.filter(({m})=>days.some(d=>((L[m.id]||{})[d]||[]).length&&((La[m.id]||{})[d]||[]).length>=2));
+  const overM=team.filter(({m})=>days.some(d=>((L[m.id]||{})[d]||[]).length&&slotClash((La[m.id]||{})[d])));
   el.innerHTML=`
   ${dd>todayStr()?`<div class="banner warn">⚠ Data Date (${fmtDw(dd)}) อยู่ในอนาคต — ระบบถือว่างานที่ยังไม่มีวันเริ่มจริง ยังไม่ได้เริ่มจนถึงวันนั้น จึงเลื่อนกำหนดการปัจจุบันไปหลัง Data Date ทั้งหมด หากไม่ได้ตั้งใจ ให้แก้ Data Date ที่แถบด้านบนเป็นวันที่อัปเดตข้อมูลจริง (ปกติคือวันนี้)</div>`:''}
   ${overM.length?`<div class="banner warn">⚠ มีบุคลากรที่ถูกมอบหมายงานซ้อนกันใน 14 วันข้างหน้า: ${overM.map(x=>esc(x.m.name)).join(', ')} — ตรวจสอบและปรับได้ที่หน้า <a href="#availability">ความว่างของทีม</a></div>`:''}
@@ -667,7 +684,7 @@ function renderDash(){
       ${team.length?`<table class="t"><thead><tr><th>ทีมโครงการ</th><th style="width:55%">ภาระงานรายวัน (ทุกโครงการ)</th><th class="num">วันมีงาน</th></tr></thead><tbody>${team.map(({m,role})=>{
         const busy=days.filter(d=>((L[m.id]||{})[d]||[]).length).length;
         return `<tr><td>${avatar(m)} ${esc(m.name)}<div class="muted" style="font-size:11px;padding-left:26px">${esc(role||m.role||'')}</div></td><td><div style="display:flex;gap:2px">${days.map(d=>{const n=((L[m.id]||{})[d]||[]).length,na=((La[m.id]||{})[d]||[]).length,lv=(m.leaves||[]).includes(d);
-          const bg=lv?'#d5d8de':n&&na>=2?'#f08b96':n?'#8fb1f7':na?'#d9d3f0':'#e9f6ee';const tip=fmtDw(d)+(lv?' · ลา':'')+(n?` · โครงการนี้ ${n} งาน`:'')+(na>n?` · โครงการอื่น ${na-n} งาน`:'');
+          const bg=lv?'#d5d8de':n&&slotClash((La[m.id]||{})[d])?'#f08b96':n?'#8fb1f7':na?'#d9d3f0':'#e9f6ee';const tip=fmtDw(d)+(lv?' · ลา':'')+(n?` · โครงการนี้ ${n} งาน`:'')+(na>n?` · โครงการอื่น ${na-n} งาน`:'');
           return `<span title="${esc(tip)}" style="flex:1;height:14px;border-radius:2px;background:${bg}"></span>`;}).join('')}</div></td><td class="num">${busy}/${days.length}</td></tr>`;}).join('')}</tbody></table>
         <div class="legend" style="margin-top:8px"><span><i style="background:#8fb1f7"></i>งานโครงการนี้</span><span><i style="background:#d9d3f0"></i>ติดโครงการอื่น</span><span><i style="background:#f08b96"></i>งานซ้อน</span><span><i style="background:#d5d8de"></i>ลา</span><span><i style="background:#e9f6ee"></i>ว่าง</span></div>`
       :'<div class="muted">โครงการนี้ยังไม่มีทีม — กด "จัดการทีม" เพื่อดึงคนจากบุคลากรส่วนกลาง</div>'}
@@ -706,7 +723,7 @@ function drawSCurve(p,S){
   x.fillStyle='#2f6fed';x.fillRect(P.l+4,P.t+2,10,3);x.fillStyle='#5b6476';x.fillText('แผน',P.l+18,P.t+7);
   x.fillStyle='#1f9d62';x.fillRect(P.l+52,P.t+2,10,3);x.fillStyle='#5b6476';x.fillText('จริง',P.l+66,P.t+7);
 }
-function avatar(m,sz){if(!m)return '';return `<span class="av" style="background:${m.color||'#5a6b8c'};${sz?'width:'+sz+'px;height:'+sz+'px;font-size:9px':''}" title="${esc(m.name)}">${esc(initials(m.name))}</span>`;}
+function avatar(m,sz){if(!m)return '';return `<span class="av" style="background:${m.color||'#5a6b8c'};${sz?'width:'+sz+'px;height:'+sz+'px;font-size:9px':''}" title="${esc(m.name)}${m.abbr?' ('+esc(m.abbr)+')':''}">${esc(abbrOf(m).slice(0,3))}</span>`;}
 function avatars(ids,sz){return `<span class="avs">${(ids||[]).map(memberById).filter(Boolean).map(m=>avatar(m,sz)).join('')}</span>`;}
 
 /* ═══════════════ GANTT ═══════════════ */
@@ -757,7 +774,7 @@ function renderGantt(){
     if(i.fc){const fs=dd>=i.as?addDays(dd,1):i.as;if(i.fc>=fs)bars+=`<rect x="${X(fs)}" y="${y+20}" width="${(diffDays(fs,i.fc)+1)*CW}" height="5" rx="2" fill="none" stroke="#7a4fe0" stroke-dasharray="3 2"/>`;}
     if(i.shifted&&pc<100)bars+=`<rect x="${X(i.s)}" y="${y+20}" width="${(diffDays(i.s,i.f)+1)*CW}" height="5" rx="2" fill="none" stroke="#7a4fe0" stroke-dasharray="3 2"/>`;
     const ex=Math.max(bx+bw,X(i.f)+CW)+6;
-    const names=(t.assignees||[]).map(memberById).filter(Boolean).map(m=>m.name.split(/\s+/)[0]).join(', ');
+    const names=(t.assignees||[]).map(memberById).filter(Boolean).map(m=>m.abbr||m.name.split(/\s+/)[0]).join(', ')+(slotTxt(taskSlots(t))!=='ชบ'?' ['+slotTxt(taskSlots(t))+']':'');
     const ovr=t.daily&&Object.keys(t.daily).length?' ✎':'';
     bars+=`<text x="${ex}" y="${y+16}" font-size="11" fill="#5b6476">${pc}%${names?' · '+esc(names):''}${ovr}</text>`;
   });
@@ -790,7 +807,7 @@ function renderGantt(){
 /* ═══════════════ MODAL HELPERS ═══════════════ */
 let modalClose=null;
 function openModal(html,size,onClose){const m=$('mdl');m.className='modal'+(size?' '+size:'');m.innerHTML=html;$('mbg').classList.add('open');modalClose=onClose||null;}
-function closeModal(){$('mbg').classList.remove('open');$('mdl').innerHTML='';if(modalClose){const f=modalClose;modalClose=null;f();}}
+function closeModal(){document.querySelectorAll('.slotpop').forEach(x=>x.remove());$('mbg').classList.remove('open');$('mdl').innerHTML='';if(modalClose){const f=modalClose;modalClose=null;f();}}
 $('mbg').addEventListener('mousedown',e=>{if(e.target.id==='mbg')closeModal();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('mbg').classList.contains('open'))closeModal();else closeDrawer();}});
 function askConfirm(msg,okText,cb){
@@ -808,7 +825,8 @@ function openTask(id,parentId){
   if(t&&isSum(t)){openSummary(id);return;}
   draftIsNew=!t;UI.selTask=t?t.id:null;
   const par=parentId!==undefined?parentId:(UI.lastParent!==undefined&&p.tasks.some(x=>x.id===UI.lastParent&&isSum(x))?UI.lastParent:lastSummaryId(p));
-  draft=t?clone(t):{id:p.nextTask,type:'task',parent:par??null,name:'',wbs:'',dur:5,plannedStart:'',actualStart:'',actualFinish:'',pct:0,weight:'',note:'',preds:[],assignees:[],daily:{}};
+  draft=t?clone(t):{id:p.nextTask,type:'task',parent:par??null,name:'',wbs:'',dur:5,plannedStart:'',actualStart:'',actualFinish:'',pct:0,weight:'',note:'',preds:[],assignees:[],daily:{},slots:['AM','PM'],pslots:{}};
+  if(!draft.slots)draft.slots=['AM','PM'];if(!draft.pslots)draft.pslots={};
   renderTaskModal();
 }
 function previewInfo(p,d){ // schedule as if the draft were saved (works for new tasks too)
@@ -844,12 +862,18 @@ function renderTaskModal(){
     ${preds}${others.length?'<button class="btn s" onclick="addPred()">＋ เพิ่มงานก่อนหน้า</button>':'<span class="muted">ยังไม่มีงานอื่นให้เลือก</span>'}
     <div class="sec">ผู้รับผิดชอบหลัก <span class="muted">เลือกจากทีมโครงการ — ใช้เป็นค่าเริ่มต้นทุกวันของงาน · ต้องการคนเพิ่ม ดึงจากบุคลากรส่วนกลางได้</span></div>
     <div class="chk-list">${chips}</div>
+    <div class="sec">ช่วงเวลาทำงานต่อวัน <span class="muted">ค่าเริ่มต้นของงานนี้ — ปรับเป็นรายคน/รายวันได้ในตารางด้านล่าง (โหมด "ช่วงเวลา")</span></div>
+    <div class="chk-list">${SLOT_KEYS.map(k=>`<span class="chk${taskSlots(t).includes(k)?' on':''}" onclick="toggleTaskSlot('${k}')"><b>${SLOTS[k].s}</b> ${SLOTS[k].l} <span class="muted mono" style="font-size:11px">${SLOTS[k].from}–${SLOTS[k].to}</span></span>`).join('')}</div>
     <div class="sec">ผู้รับผิดชอบรายวัน <span class="muted">คลิกช่องเพื่อเพิ่ม/ถอดคนในวันนั้น · กรอบส้ม = แก้จากค่าเริ่มต้น · จุดแดง = วันนั้นติดงานอื่นอยู่แล้ว</span>
       ${Object.keys(t.daily).length?'<button class="btn s" style="margin-left:auto" onclick="captureDraft();draft.daily={};renderTaskModal()">รีเซ็ตเป็นค่าเริ่มต้น</button>':''}</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;font-size:12px"><span class="muted">คลิกช่องในตารางเพื่อ:</span>
+      <span class="chk${(UI.dgMode||'assign')==='assign'?' on':''}" onclick="UI.dgMode='assign';refreshDG();this.parentNode.querySelectorAll('.chk').forEach((c,i)=>c.classList.toggle('on',i===0))">👤 มอบหมาย/ถอดคน</span>
+      <span class="chk${UI.dgMode==='slot'?' on':''}" onclick="UI.dgMode='slot';refreshDG();this.parentNode.querySelectorAll('.chk').forEach((c,i)=>c.classList.toggle('on',i===1))">🕘 กำหนดช่วงเวลา</span>
+      <span class="muted">· ในช่อง: ช = เช้า 9–13 · บ = บ่าย 14–18 · O = OT 18–20</span></div>
     <div id="dgHost">${dailyGrid(tmp,t,inf)}</div>
     <div class="fr" style="margin-top:12px"><div class="f" style="grid-column:1/-1"><label>หมายเหตุ</label><textarea id="t_note">${esc(t.note)}</textarea></div></div>
   </div>
-  <div class="mf">${draftIsNew?'':`<button class="btn d" onclick="deleteTask(${t.id})">ลบงาน</button><button class="btn" title="เลื่อนขึ้น" onclick="moveTask(${t.id},-1)">▲</button><button class="btn" title="เลื่อนลง" onclick="moveTask(${t.id},1)">▼</button>`}
+  <div class="mf">${draftIsNew?'':`<button class="btn d" onclick="deleteTask(${t.id})">ลบงาน</button><button class="btn" title="เลื่อนขึ้น" onclick="moveTask(${t.id},-1)">▲</button><button class="btn" title="เลื่อนลง" onclick="moveTask(${t.id},1)">▼</button><button class="btn" title="บันทึกงานนี้ แล้วเปิดหน้าตรวจรายการลงปฏิทิน" onclick="saveTask();openCalendar(${t.id})">📅 ลงปฏิทิน</button>`}
     <span class="sp"></span><button class="btn" onclick="closeModal()">ยกเลิก</button>${draftIsNew?'<button class="btn" onclick="saveTask(true)">บันทึกและเพิ่มต่อ</button>':''}<button class="btn p" onclick="saveTask()">บันทึก</button></div>`,'lg',()=>{UI.selTask=null;});
 }
 function infoBanner(inf){const p=proj(),t=draft;let w='';
@@ -884,9 +908,30 @@ function dailyGrid(p,t,inf){
     const on=assigneesOn(t,d).includes(m.id),ov=Array.isArray(t.daily[d])&&(on!==def.has(m.id));
     const leave=(m.leaves||[]).includes(d);
     const other=((L[m.id]||{})[d]||[]).filter(x=>!(x.p.id===realId&&x.t.id===t.id));
-    const tip=fmtDw(d)+(leave?' · ลา':'')+(other.length?' · ติด: '+other.map(x=>x.t.name+' ('+x.p.name+')').join(', '):'');
-    return `<td class="dc${on?' on':''}${ov?' ov':''}${leave?' leave':''}" title="${esc(tip)}" onclick="toggleDaily('${esc(m.id)}','${d}')">${leave?'ลา':on?'✓':''}${other.length?'<span class="cf"></span>':''}</td>`;}).join('')}</tr>`).join('');
+    const my=slotsOn(t,d,m.id),sov=!!(t.pslots&&t.pslots[d+'|'+m.id]);
+    const hit=other.filter(x=>(x.slots||[]).some(k=>(on?my:taskSlots(t)).includes(k)));
+    const tip=fmtDw(d)+(leave?' · ลา':'')+(on?' · '+slotRange(my):'')+(other.length?' · งานอื่น: '+other.map(x=>x.t.name+' ('+(x.p.code||x.p.name)+') '+slotRange(x.slots)).join(', '):'');
+    return `<td class="dc${on?' on':''}${ov?' ov':''}${sov?' sov':''}${leave?' leave':''}" title="${esc(tip)}" onclick="dgClick(event,'${esc(m.id)}','${d}')">${leave?'ลา':on?slotTxt(my):''}${hit.length?'<span class="cf"></span>':other.length?'<span class="cf" style="background:#98a1b2"></span>':''}</td>`;}).join('')}</tr>`).join('');
   return `<div class="dg-wrap"><table class="dg"><thead><tr><th class="mcol">${TH_MF[pd(dates[0]).getMonth()]} ${pd(dates[0]).getFullYear()+543}</th>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function toggleTaskSlot(k){captureDraft();const a=taskSlots(draft).slice();const i=a.indexOf(k);if(i>=0){if(a.length===1){toast('ต้องมีอย่างน้อย 1 ช่วงเวลา');return;}a.splice(i,1);}else a.push(k);
+  draft.slots=SLOT_KEYS.filter(x=>a.includes(x));Object.keys(draft.pslots||{}).forEach(key=>{const v=draft.pslots[key];if(v.length===draft.slots.length&&v.every(x=>draft.slots.includes(x)))delete draft.pslots[key];});renderTaskModal();}
+function dgClick(ev,mid,d){
+  if(UI.dgMode!=='slot'){toggleDaily(mid,d);return;}
+  if(!assigneesOn(draft,d).includes(mid)){toast('ยังไม่ได้มอบหมายคนนี้ในวันนั้น — สลับไปโหมด "มอบหมาย/ถอดคน" ก่อน');return;}
+  captureDraft();document.querySelectorAll('.slotpop').forEach(x=>x.remove());
+  const m=memberById(mid),cur=slotsOn(draft,d,mid);
+  const pop=document.createElement('div');pop.className='slotpop';
+  pop.innerHTML=`<div style="font-weight:600;margin-bottom:6px">${esc(abbrOf(m))} · ${fmtDw(d)}</div>${SLOT_KEYS.map(k=>`<label style="display:flex;gap:6px;align-items:center;margin:3px 0"><input type="checkbox" value="${k}" ${cur.includes(k)?'checked':''}> ${SLOTS[k].l} <span class="muted mono" style="font-size:11px">${SLOTS[k].from}–${SLOTS[k].to}</span></label>`).join('')}
+    <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap"><button class="btn s p" data-a="one">ใช้วันนี้</button><button class="btn s" data-a="all">ใช้ทุกวันของคนนี้</button><button class="btn s" data-a="x">ปิด</button></div>`;
+  document.body.appendChild(pop);const r=ev.target.closest('td').getBoundingClientRect();
+  pop.style.left=Math.min(window.innerWidth-240,r.left)+'px';pop.style.top=Math.min(window.innerHeight-190,r.bottom+4)+'px';
+  pop.onclick=e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;if(a==='x'){pop.remove();return;}
+    const sel=[...pop.querySelectorAll('input:checked')].map(i=>i.value);if(!sel.length){toast('เลือกอย่างน้อย 1 ช่วงเวลา');return;}
+    const def=taskSlots(draft),same=sel.length===def.length&&sel.every(x=>def.includes(x));draft.pslots=draft.pslots||{};
+    const p=proj(),{tmp,inf}=previewInfo(p,draft);const days=a==='all'?taskWorkDates(tmp,inf).filter(x=>assigneesOn(draft,x).includes(mid)):[d];
+    days.forEach(x=>{const key=x+'|'+mid;if(same)delete draft.pslots[key];else draft.pslots[key]=SLOT_KEYS.filter(k=>sel.includes(k));});
+    pop.remove();refreshDG();};
 }
 function toggleDaily(mid,d){
   const m=memberById(mid);if(m&&(m.leaves||[]).includes(d)){toast(m.name+' ลาวันนี้');return;}
@@ -1032,16 +1077,16 @@ function renderAv(){
   const rows=DB.members.map(m=>`<tr><td class="mcol">${avatar(m,20)} ${esc(m.name)}<div class="muted" style="font-size:10px;padding-left:24px">${esc(m.role||'')}</div></td>${dates.map(d=>{
       const dt=pd(d),we=dt.getDay()===0||dt.getDay()===6,leave=(m.leaves||[]).includes(d),items=((L[m.id]||{})[d])||[];
       let cls='c',txt='';
-      if(leave){cls+=' leave';txt='ลา';}else if(items.length>=2){cls+=' b2';txt=items.length;}else if(items.length===1){cls+=' b1';txt='1';}else{cls+=' free';free[d]++;}
+      const bz=slotBusy(items);if(leave){cls+=' leave';txt='ลา';}else if(slotClash(items)){cls+=' b2';txt=items.length;}else if(items.length&&!(bz.has('AM')&&bz.has('PM'))){cls+=' bh';txt=slotTxt([...bz]);}else if(items.length){cls+=' b1';txt=items.length>1?items.length:slotTxt([...bz]);}else{cls+=' free';free[d]++;}
       if(we)cls+=' wkend';
       const projs=[...new Set(items.map(x=>x.p.color))].slice(0,4);
-      const tip=fmtDw(d)+(leave?' · ลา':'')+(items.length?'\n'+items.map(x=>'• '+x.t.name+' ('+(x.p.code||x.p.name)+')').join('\n'):leave?'':' · ว่าง');
+      const tip=fmtDw(d)+(leave?' · ลา':'')+(items.length?'\n'+items.map(x=>'• '+x.t.name+' ('+(x.p.code||x.p.name)+') '+slotRange(x.slots)).join('\n'):leave?'':' · ว่าง');
       return `<td class="${cls}" title="${esc(tip)}" onclick="openCell('${esc(m.id)}','${d}')">${txt}${projs.length?`<div class="dots">${projs.map(c=>`<span style="background:${c}"></span>`).join('')}</div>`:''}</td>`;}).join('')}</tr>`).join('');
   const sum=`<tr class="sumrow"><td class="mcol" style="color:var(--ink2);font-weight:500">คนว่าง (คน)</td>${dates.map(d=>`<td>${free[d]}</td>`).join('')}</tr>`;
   host.innerHTML=`<table class="avt"><thead><tr><th class="mcol" rowspan="2">ทีมงาน</th>${mh}</tr><tr>${dh}</tr></thead><tbody>${rows}${sum}</tbody></table>`;
   // summary
   $('avSummary').innerHTML=`<table class="t"><thead><tr><th>ทีมงาน</th><th class="num">วันมีงาน</th><th class="num">วันงานซ้อน</th><th class="num">วันลา</th><th class="num">วันว่าง</th></tr></thead><tbody>${DB.members.map(m=>{
-    let b=0,o=0,l=0,f=0;dates.forEach(d=>{const n=(((L[m.id]||{})[d])||[]).length;if((m.leaves||[]).includes(d))l++;else if(n>=2){o++;b++;}else if(n===1)b++;else f++;});
+    let b=0,o=0,l=0,f=0;dates.forEach(d=>{const n=(((L[m.id]||{})[d])||[]).length;if((m.leaves||[]).includes(d))l++;else if(slotClash(((L[m.id]||{})[d]))){o++;b++;}else if(n)b++;else f++;});
     return `<tr><td>${avatar(m,18)} ${esc(m.name)}</td><td class="num">${b}</td><td class="num ${o?'c-red':''}">${o}</td><td class="num">${l}</td><td class="num c-green">${f}</td></tr>`;}).join('')}</tbody></table>`;
 }
 function openCell(mid,d){
@@ -1055,7 +1100,7 @@ function openCell(mid,d){
   $('drBody').innerHTML=`
     ${leave?'<div class="banner warn">วันนี้บันทึกเป็นวันลา</div>':''}
     <div class="sec">งานในวันนี้ (${items.length})</div>
-    ${items.length?items.map(x=>`<div class="titem"><span class="pc" style="background:${x.p.color}"></span><div style="flex:1"><div style="font-weight:500">${esc(x.t.name)}</div><div class="muted" style="font-size:11px">${esc(x.p.code||x.p.name)}</div></div>
+    ${items.length?items.map(x=>`<div class="titem"><span class="pc" style="background:${x.p.color}"></span><div style="flex:1"><div style="font-weight:500">${esc(x.t.name)}</div><div class="muted" style="font-size:11px">${esc(x.p.code||x.p.name)} · ${slotRange(x.slots)}</div></div>
       <button class="btn s" onclick="cellUnassign('${esc(x.p.id)}',${x.t.id},'${esc(mid)}','${d}')">ถอดออกวันนี้</button></div>`).join(''):'<div class="c-green" style="margin-bottom:8px">✓ ว่างทั้งวัน</div>'}
     <div class="sec">มอบหมายงานเพิ่มในวันนี้</div>
     ${cands.length?`<select class="sel" id="cellCand" style="width:100%;margin-bottom:6px">${cands.map((x,k)=>`<option value="${k}">${esc((x.p.code||x.p.name)+' · '+x.t.name)}</option>`).join('')}</select>
@@ -1095,7 +1140,7 @@ function memberProjects(mid){return DB.projects.filter(p=>p.status!=='closed'&&p
 function utilization(m,days){ // % ของวันทำงาน (จ–ส) ที่มีงาน ในช่วง days วันข้างหน้า, ไม่นับวันลา
   const td=todayStr(),to=addDays(td,days-1);const L=buildLoad(DB.projects.filter(p=>p.status!=='closed'),td,to);
   const ds=dateRange(td,to).filter(d=>pd(d).getDay()!==0&&!(m.leaves||[]).includes(d));
-  const busy=ds.filter(d=>((L[m.id]||{})[d]||[]).length).length,over=ds.filter(d=>((L[m.id]||{})[d]||[]).length>=2).length;
+  const busy=ds.filter(d=>((L[m.id]||{})[d]||[]).length).length,over=ds.filter(d=>slotClash((L[m.id]||{})[d])).length;
   return {pct:ds.length?busy/ds.length*100:0,busy,over,n:ds.length};}
 function renderTeam(){
   const el=$('v-team');const td=todayStr();UI.teamQ=UI.teamQ||'';UI.teamDept=UI.teamDept||'';
@@ -1118,7 +1163,7 @@ function renderTeam(){
   </div>
   ${list.length?`<div class="card"><table class="t"><thead><tr><th>ชื่อ</th><th>ตำแหน่ง</th><th>แผนก</th><th>ติดต่อ</th><th>สังกัดโครงการ</th><th style="width:170px">ใช้กำลังคน 4 สัปดาห์</th><th>วันลาที่จะถึง</th><th></th></tr></thead><tbody>
   ${list.map(m=>{const on=isActiveM(m);const u=on?U.get(m.id):null;const lv=(m.leaves||[]).filter(d=>d>=td).slice(0,4);const ps=memberProjects(m.id);
-    return `<tr style="${on?'':'opacity:.5'}"><td>${avatar(m)} <b>${esc(m.name)}</b>${on?'':' <span class="pill gray">ไม่ปฏิบัติงาน</span>'}</td><td>${esc(m.role||'—')}</td><td>${esc(m.dept||'—')}</td>
+    return `<tr style="${on?'':'opacity:.5'}"><td>${avatar(m)} <b>${esc(m.name)}</b>${m.abbr?` <span class="pill gray mono">${esc(m.abbr)}</span>`:''}${on?'':' <span class="pill gray">ไม่ปฏิบัติงาน</span>'}</td><td>${esc(m.role||'—')}</td><td>${esc(m.dept||'—')}</td>
     <td style="font-size:12px">${esc(m.phone||'')}${m.phone&&m.email?'<br>':''}${esc(m.email||'')}${!m.phone&&!m.email?'<span class="muted">—</span>':''}</td>
     <td>${ps.length?ps.map(p=>`<span class="pill" style="background:${p.color}22;color:${p.color};margin:1px" title="${esc(p.name)}${projRole(p,m.id)?' · '+esc(projRole(p,m.id)):''}">${esc(p.code||p.name)}</span>`).join(''):'<span class="muted">—</span>'}</td>
     <td>${u?`<div style="display:flex;align-items:center;gap:6px"><div class="prog" style="flex:1"><i style="width:${u.pct}%;background:${u.pct>90?'var(--red)':u.pct>70?'var(--amber)':'var(--blue)'}"></i></div><span class="mono" style="font-size:11px;width:34px;text-align:right">${Math.round(u.pct)}%</span></div>${u.over?`<div class="c-red" style="font-size:11px">งานซ้อน ${u.over} วัน</div>`:''}`:'—'}</td>
@@ -1129,7 +1174,7 @@ function renderTeam(){
 let mdraft=null;
 function openMember(id){
   const m=id?memberById(id):null;
-  mdraft=m?clone(m):{id:uid('m'),name:'',role:'',dept:'',phone:'',email:'',active:true,color:COLORS[DB.members.length%COLORS.length],leaves:[]};mdraft._new=!m;
+  mdraft=m?clone(m):{id:uid('m'),name:'',abbr:'',role:'',dept:'',phone:'',email:'',active:true,color:COLORS[DB.members.length%COLORS.length],leaves:[]};mdraft._new=!m;
   renderMemberModal();
 }
 function renderMemberModal(){
@@ -1138,6 +1183,7 @@ function renderMemberModal(){
   openModal(`<div class="mh">${m._new?'เพิ่มบุคลากร':'ข้อมูลบุคลากร'}<button class="x" onclick="closeModal()">×</button></div>
   <div class="mb"><div class="fr">
     <div class="f" style="grid-column:span 2"><label>ชื่อ-นามสกุล</label><input id="m_name" value="${esc(m.name)}"></div>
+    <div class="f"><label>ชื่อย่อ (ใช้บนการ์ด/ปฏิทิน)</label><input id="m_abbr" maxlength="8" value="${esc(m.abbr||'')}" placeholder="${esc(initials(m.name||'ชื่อ'))}"></div>
     <div class="f"><label>สี</label><input id="m_color" type="color" value="${m.color}" style="height:34px;padding:2px"></div></div>
     <div class="fr"><div class="f"><label>ตำแหน่ง</label><input id="m_role" value="${esc(m.role||'')}" placeholder="เช่น วิศวกรโครงสร้าง"></div>
     <div class="f"><label>แผนก/ฝ่าย</label><input id="m_dept" list="deptList" value="${esc(m.dept||'')}" placeholder="เช่น ฝ่ายวิศวกรรม"><datalist id="deptList">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist></div></div>
@@ -1150,11 +1196,12 @@ function renderMemberModal(){
   </div>
   <div class="mf">${m._new?'':`<button class="btn d" onclick="deleteMember('${esc(m.id)}')">ลบ</button>`}<span class="sp"></span><button class="btn" onclick="closeModal()">ยกเลิก</button><button class="btn p" onclick="saveMember()">บันทึก</button></div>`,'');
 }
-function capM(){if($('m_name')){mdraft.name=$('m_name').value.trim();mdraft.role=$('m_role').value.trim();mdraft.color=$('m_color').value;
+function capM(){if($('m_name')){mdraft.name=$('m_name').value.trim();mdraft.abbr=$('m_abbr').value.trim();mdraft.role=$('m_role').value.trim();mdraft.color=$('m_color').value;
   mdraft.dept=$('m_dept').value.trim();mdraft.phone=$('m_phone').value.trim();mdraft.email=$('m_email').value.trim();mdraft.active=$('m_active').checked;}}
 function addLeave(){capM();const a=$('lv_a').value,b=$('lv_b').value||a;if(!a)return;dateRange(a<b?a:b,a<b?b:a).forEach(d=>{if(!mdraft.leaves.includes(d))mdraft.leaves.push(d);});mdraft.leaves.sort();renderMemberModal();}
 function rmLeave(d){capM();mdraft.leaves=mdraft.leaves.filter(x=>x!==d);renderMemberModal();}
-function saveMember(){capM();if(!mdraft.name){toast('กรุณาระบุชื่อ');return;}const isNew=mdraft._new;delete mdraft._new;
+function saveMember(){capM();if(!mdraft.name){toast('กรุณาระบุชื่อ');return;}
+  if(mdraft.abbr&&DB.members.some(x=>x.id!==mdraft.id&&String(x.abbr||'').toLowerCase()===mdraft.abbr.toLowerCase())){toast('ชื่อย่อ "'+mdraft.abbr+'" ซ้ำกับคนอื่น');return;}const isNew=mdraft._new;delete mdraft._new;
   if(isNew)DB.members.push(mdraft);else{const k=DB.members.findIndex(x=>x.id===mdraft.id);DB.members[k]=mdraft;}
   persistTeam();closeModal();renderView();toast('บันทึกข้อมูลบุคลากรแล้ว');}
 function deleteMember(id){const m=memberById(id);askConfirm(`ลบ <b>${esc(m.name)}</b> ออกจากบุคลากรส่วนกลาง? คนนี้จะถูกถอดออกจากทีมและงานในทุกโครงการ<br><span class="muted">ถ้าเพียงลาออก/ย้ายไป แนะนำให้ยกเลิก "ปฏิบัติงานอยู่" แทน เพื่อเก็บประวัติไว้</span>`,'ลบ',()=>{
@@ -1272,7 +1319,7 @@ function mergeData(d){
   const map={};let teamCh=false;
   (d.members||[]).forEach(m=>{if(!m||!m.name)return;const ex=DB.members.find(x=>x.name.trim().toLowerCase()===String(m.name).trim().toLowerCase());
     if(ex){map[m.id]=ex.id;const lv=new Set([...(ex.leaves||[]),...(m.leaves||[]).filter(isDate)]);if(lv.size!==(ex.leaves||[]).length){ex.leaves=[...lv].sort();teamCh=true;}}
-    else{const nm={id:uid('m'),name:String(m.name),role:String(m.role||''),dept:String(m.dept||''),phone:String(m.phone||''),email:String(m.email||''),active:m.active!==false,color:m.color||COLORS[DB.members.length%COLORS.length],leaves:(m.leaves||[]).filter(isDate)};DB.members.push(nm);map[m.id]=nm.id;teamCh=true;}});
+    else{const nm={id:uid('m'),name:String(m.name),abbr:String(m.abbr||''),role:String(m.role||''),dept:String(m.dept||''),phone:String(m.phone||''),email:String(m.email||''),active:m.active!==false,color:m.color||COLORS[DB.members.length%COLORS.length],leaves:(m.leaves||[]).filter(isDate)};DB.members.push(nm);map[m.id]=nm.id;teamCh=true;}});
   let n=0;
   d.projects.forEach(raw=>{const p=sanitizeProject(raw);if(!p)return;
     const exists=DB.projects.some(x=>x.id===p.id);p.id=exists?uid('p'):p.id;if(exists)p.name+=' (นำเข้า)';
@@ -1553,7 +1600,7 @@ function buildXLS(p){
   const ms=DB.members.filter(m=>Lp[m.id]||leaves(p).some(t=>t.assignees.includes(m.id)));
   ms.forEach((m,mi)=>{const r=4+mi;xput(s3,r,0,m.name,st.txt);xput(s3,r,1,m.role||'',st.txt);
     dates.forEach((d,k)=>{const it=((Lp[m.id]||{})[d])||[],all=((La[m.id]||{})[d])||[];const lv=(m.leaves||[]).includes(d);
-      xput(s3,r,2+k,lv?'ลา':it.map(x=>numOf[x.t.id]).join(','),lv?cl:all.length>=2?c2:it.length?c1:cf);});});
+      xput(s3,r,2+k,lv?'ลา':it.map(x=>numOf[x.t.id]).join(','),lv?cl:slotClash(all)?c2:it.length?c1:cf);});});
   s3.freeze={r:4,c:2};
   return bk.build();
 }
@@ -1805,8 +1852,8 @@ async function renderReport(p,o){
       cur.y+=9*K;
       ms.forEach(m=>{if(cur.y+RH>BOT){newPage();cur.y+=2*K;}const y=cur.y;box(x,M,y,NW,RH,'#fff','#d9dee7');T(x,m.name,M+1.5*K,y+RH/2,{size:7.5,maxW:NW-3*K});
         ch.forEach((d,j)=>{const it=((Lp[m.id]||{})[d])||[],all=((La[m.id]||{})[d])||[],lv=(m.leaves||[]).includes(d);const X0=M+NW+j*cw;
-          box(x,X0,y,cw,RH,lv?'#e4e6ea':all.length>=2?'#ffd6db':it.length?'#dbe6ff':'#fff','#d9dee7');
-          T(x,lv?'ลา':it.map(q=>numOf[q.t.id]).join(','),X0+cw/2,y+RH/2,{size:5.8,align:'center',maxW:cw-1*K,color:all.length>=2?'#b0182a':'#1d2433'});});
+          box(x,X0,y,cw,RH,lv?'#e4e6ea':slotClash(all)?'#ffd6db':it.length?'#dbe6ff':'#fff','#d9dee7');
+          T(x,lv?'ลา':it.map(q=>numOf[q.t.id]).join(','),X0+cw/2,y+RH/2,{size:5.8,align:'center',maxW:cw-1*K,color:slotClash(all)?'#b0182a':'#1d2433'});});
         cur.y+=RH;});
       if(!ms.length)T(x,'ยังไม่มีการมอบหมายผู้รับผิดชอบ',M,cur.y+4*K,{size:9,color:'#98a1b2'});
     }
@@ -2039,6 +2086,111 @@ async function gsConnect(){const url=$('gsUrl').value.trim();
   location.reload();}
 function gsDisconnect(){askConfirm('ยกเลิกการเชื่อมต่อฐานข้อมูลกลางบนเบราว์เซอร์นี้? ข้อมูลใน Google Sheets จะไม่ถูกลบ','ยกเลิกการเชื่อมต่อ',()=>{try{localStorage.removeItem(GS_KEY);localStorage.removeItem(GS_TOK);}catch(e){}location.reload();});}
 
+
+/* ═══════════════ ลงนัดในปฏิทิน (กดสั่งเท่านั้น — ตรวจรายการก่อนสร้าง) ═══════════════ */
+function blocksOf(slots){ // รวมช่วงที่ติดกัน: เช้า+บ่าย = 09:00–18:00, บ่าย+OT = 14:00–20:00
+  const ks=SLOT_KEYS.filter(k=>slots.includes(k));const out=[];
+  ks.forEach(k=>{const l=out[out.length-1];if(l&&SLOT_KEYS.indexOf(k)===SLOT_KEYS.indexOf(l.last)+1){l.to=SLOTS[k].to;l.last=k;l.keys.push(k);}else out.push({from:SLOTS[k].from,to:SLOTS[k].to,last:k,keys:[k]});});
+  return out;}
+function hashStr(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return (h>>>0).toString(36);}
+function calEvents(p,o){ // o:{from,to,taskId,members:Set|null,ot:boolean}
+  const S=sched(p),TR=tree(p),num={},parentName={};TR.rows.forEach(r=>{num[r.t.id]=r.num;});
+  p.tasks.forEach(t=>{if(t.parent!=null){const pr=p.tasks.find(x=>x.id===t.parent);if(pr)parentName[t.id]=pr.name;}});
+  const ev=[];
+  leaves(p).forEach(t=>{if(o.taskId!=null&&t.id!==o.taskId)return;const inf=S.info[t.id];if(!inf||inf.cyc||(+t.pct||0)>=100)return;
+    taskWorkDates(p,inf).forEach(d=>{if(d<o.from||d>o.to)return;
+      const groups={};
+      assigneesOn(t,d).forEach(mid=>{const m=memberById(mid);if(!m||(o.members&&!o.members.has(mid)))return;if((m.leaves||[]).includes(d))return;
+        let sl=slotsOn(t,d,mid);if(!o.ot)sl=sl.filter(k=>k!=='OT');
+        blocksOf(sl).forEach(b=>{const k=b.from+'-'+b.to;(groups[k]=groups[k]||{b,ms:[]}).ms.push(m);});});
+      Object.values(groups).forEach(({b,ms})=>{
+        const ab=ms.map(abbrOf).join(', ');
+        const title=`[${p.code||p.name.slice(0,12)}] ${t.name} — ${ab}`;
+        const desc=`โครงการ: ${p.name}${p.code?' ('+p.code+')':''}\nงาน: ${num[t.id]} ${parentName[t.id]?parentName[t.id]+' › ':''}${t.name}\nผู้รับผิดชอบ: ${ms.map(m=>m.name+(m.abbr?' ('+m.abbr+')':'')).join(', ')}\nช่วงเวลา: ${b.keys.map(k=>SLOTS[k].l).join(' + ')} ${b.from}–${b.to}${t.note?'\nหมายเหตุ: '+t.note:''}\n— สร้างจาก PRIM`;
+        const key=`${p.id}|${t.id}|${d}|${b.from}`;
+        const guests=ms.map(m=>m.email).filter(e=>e&&/@/.test(e));
+        ev.push({key,date:d,from:b.from,to:b.to,start:`${d}T${b.from}:00+07:00`,end:`${d}T${b.to}:00+07:00`,title,description:desc,guests,ms,t,hash:hashStr(title+'|'+b.to+'|'+desc+'|'+guests.join(','))});});
+    });});
+  return ev.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.from<b.from?-1:1);
+}
+let CAL={p:null,o:null,ev:[],status:{},orph:[]};
+function openCalendar(taskId){
+  const p=proj();if(!p){toast('กรุณาเลือกโปรเจกต์');return;}
+  let from=todayStr(),to=addDays(from,13);
+  if(taskId!=null){const i=sched(p).info[taskId];if(i&&i.s){from=i.s>from?i.s:from;to=i.f>from?i.f:from;}}
+  CAL={p,o:{from,to,taskId:taskId??null,members:null,ot:true,invite:false},ev:[],status:{},orph:[]};
+  const team=projTeam(p).map(x=>x.m);const canPush=Store.mode==='gs'&&GS.user&&GS.user.role!=='viewer';
+  const t=taskId!=null?p.tasks.find(x=>x.id===taskId):null;
+  openModal(`<div class="mh">📅 ลงนัดในปฏิทิน — ${esc(p.code||p.name)}${t?' · '+esc(t.name):''}<button class="x" onclick="closeModal()">×</button></div>
+  <div class="mb">
+    <div class="banner info">ระบบจะไม่ลงปฏิทินเอง — ตรวจรายการด้านล่าง เลือกเฉพาะนัดที่ต้องการ แล้วกด "ลงปฏิทิน Google" ${canPush?'· นัดจะถูกสร้างในปฏิทินแยกชื่อ <b>PRIM — ตารางงาน</b> ลงนัดซ้ำได้โดยไม่เกิดนัดซ้อน (ระบบจะอัปเดตนัดเดิม)':'· <b>หน้านี้ยังไม่ได้เชื่อมต่อฐานข้อมูลกลาง</b> จึงลงปฏิทิน Google โดยตรงไม่ได้ — ใช้ "ดาวน์โหลด .ics" แล้วนำเข้า Google Calendar / Outlook แทน'}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <label class="lbl">ตั้งแต่</label><input type="date" class="inp" id="cFrom" value="${from}"><label class="lbl">ถึง</label><input type="date" class="inp" id="cTo" value="${to}">
+      ${t?'':''}<label class="chk on"><input type="checkbox" id="cOT" checked style="display:none" onchange="this.parentNode.classList.toggle('on',this.checked)">รวม OT</label>
+      ${canPush?`<label class="chk"><input type="checkbox" id="cInv" style="display:none" onchange="this.parentNode.classList.toggle('on',this.checked)">ส่งคำเชิญถึงอีเมลผู้รับผิดชอบ</label>`:''}
+      <button class="btn" onclick="calRefresh()">⟳ แสดงรายการ</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><span class="lbl">ผู้รับผิดชอบ:</span>
+      ${team.map(m=>`<label class="chk on"><input type="checkbox" class="cMem" value="${esc(m.id)}" checked style="display:none" onchange="this.parentNode.classList.toggle('on',this.checked)">${avatar(m,18)} ${esc(abbrOf(m))}</label>`).join('')||'<span class="muted">ยังไม่มีทีมโครงการ</span>'}</div>
+    <div id="cList" class="muted">กำลังเตรียมรายการ…</div>
+  </div>
+  <div class="mf">${canPush?'<button class="btn" id="cUndo" onclick="calUndo()" title="ลบนัดที่สร้างในการลงปฏิทินครั้งล่าสุด">↶ ยกเลิกการลงครั้งล่าสุด</button>':''}<span class="sp"></span>
+    <button class="btn" onclick="calICS()">↓ ดาวน์โหลด .ics</button>${canPush?'<button class="btn p" id="cGo" onclick="calPush()">📅 ลงปฏิทิน Google</button>':''}</div>`,'lg');
+  try{const last=JSON.parse(localStorage.getItem('prim_cal_last')||'null');if($('cUndo'))$('cUndo').disabled=!(last&&last.batch);}catch(e){}
+  calRefresh();
+}
+async function calRefresh(){
+  const o=CAL.o;o.from=$('cFrom').value||o.from;o.to=$('cTo').value||o.to;o.ot=$('cOT').checked;o.invite=!!($('cInv')&&$('cInv').checked);
+  if(o.to<o.from){toast('ช่วงวันที่ไม่ถูกต้อง');return;}if(diffDays(o.from,o.to)>120){o.to=addDays(o.from,120);$('cTo').value=o.to;toast('จำกัดช่วงไม่เกิน 120 วันต่อครั้ง');}
+  const sel=[...document.querySelectorAll('.cMem')];o.members=sel.length?new Set(sel.filter(c=>c.checked).map(c=>c.value)):null;
+  CAL.ev=calEvents(CAL.p,o);CAL.status={};CAL.orph=[];
+  if(Store.mode==='gs'&&GS.user){$('cList').innerHTML='<span class="muted">กำลังตรวจสอบนัดที่เคยลงไว้…</span>';
+    try{const j=await gsCall({action:'calStatus',prefix:CAL.p.id+'|'+(o.taskId!=null?o.taskId+'|':'')});(j.items||[]).forEach(x=>CAL.status[x.key]=x);
+      const keys=new Set(CAL.ev.map(e=>e.key));CAL.orph=(j.items||[]).filter(x=>!keys.has(x.key)&&x.key.split('|')[2]>=o.from&&x.key.split('|')[2]<=o.to);}
+    catch(e){if(e.message&&/Authorization|สิทธิ์|permission|CalendarApp/i.test(e.message))toast('ฐานข้อมูลยังไม่ได้รับสิทธิ์ใช้ปฏิทิน — ผู้ดูแลระบบต้องอนุญาตสิทธิ์ก่อน');}}
+  calRender();
+}
+function calRender(){
+  const ev=CAL.ev;if(!ev.length&&!CAL.orph.length){$('cList').innerHTML='<div class="empty" style="padding:20px">ไม่มีนัดในช่วงที่เลือก — ตรวจสอบว่ามีการมอบหมายผู้รับผิดชอบในงานย่อยแล้ว</div>';return;}
+  const st=e=>{const s=CAL.status[e.key];return !s?['ใหม่','blue']:s.hash===e.hash?['ลงแล้ว','green']:['มีการเปลี่ยนแปลง','amber'];};
+  const cnt={n:0,c:0,u:0};ev.forEach(e=>{const s=st(e)[0];s==='ใหม่'?cnt.n++:s==='ลงแล้ว'?cnt.u++:cnt.c++;});
+  $('cList').innerHTML=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;font-size:12px"><b>${ev.length} นัด</b><span class="pill blue">ใหม่ ${cnt.n}</span><span class="pill amber">เปลี่ยนแปลง ${cnt.c}</span><span class="pill green">ลงแล้ว ${cnt.u}</span>
+    <span class="sp"></span><a href="javascript:void(0)" onclick="document.querySelectorAll('.cEv').forEach(c=>c.checked=true)">เลือกทั้งหมด</a> · <a href="javascript:void(0)" onclick="document.querySelectorAll('.cEv').forEach(c=>c.checked=c.dataset.st!=='ลงแล้ว')">เฉพาะใหม่/เปลี่ยนแปลง</a> · <a href="javascript:void(0)" onclick="document.querySelectorAll('.cEv').forEach(c=>c.checked=false)">ไม่เลือก</a></div>
+  <div style="max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:6px"><table class="t"><thead><tr><th style="width:28px"></th><th>วันที่</th><th>เวลา</th><th>ชื่อนัด (ที่จะแสดงในปฏิทิน)</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th></tr></thead><tbody>
+  ${ev.map((e,i)=>{const s=st(e);return `<tr><td><input type="checkbox" class="cEv" data-i="${i}" data-st="${s[0]}" ${s[0]==='ลงแล้ว'?'':'checked'}></td><td style="white-space:nowrap">${fmtDw(e.date)}</td><td class="mono" style="white-space:nowrap;font-size:12px">${e.from}–${e.to}</td>
+    <td style="font-size:12.5px">${esc(e.title)}</td><td>${avatars(e.ms.map(m=>m.id),18)}${CAL.o.invite&&e.guests.length<e.ms.length?' <span class="muted" style="font-size:10px" title="บางคนยังไม่มีอีเมลในข้อมูลบุคลากร">⚠ ไม่มีอีเมล</span>':''}</td><td><span class="pill ${s[1]}">${s[0]}</span></td></tr>`;}).join('')}
+  ${CAL.orph.map((x,i)=>`<tr style="background:#fff4f4"><td><input type="checkbox" class="cDel" data-i="${i}" checked></td><td style="white-space:nowrap">${fmtDw(x.key.split('|')[2])}</td><td></td><td style="font-size:12.5px;text-decoration:line-through">${esc(x.title)}</td><td></td><td><span class="pill red">ไม่อยู่ในแผนแล้ว → ลบ</span></td></tr>`).join('')}
+  </tbody></table></div>${CAL.orph.length?`<div class="muted" style="font-size:12px;margin-top:6px">แถวสีแดง = นัดที่เคยลงไว้ แต่ตอนนี้ไม่อยู่ในแผนแล้ว (เปลี่ยนวัน/เปลี่ยนคน) — ติ๊กไว้เพื่อลบออกจากปฏิทิน</div>`:''}`;
+}
+const calSel=()=>[...document.querySelectorAll('.cEv:checked')].map(c=>CAL.ev[+c.dataset.i]);
+async function calPush(){
+  const sel=calSel(),dels=[...document.querySelectorAll('.cDel:checked')].map(c=>CAL.orph[+c.dataset.i].key);
+  if(!sel.length&&!dels.length){toast('ยังไม่ได้เลือกนัด');return;}
+  askConfirm(`ยืนยันลงปฏิทิน Google: สร้าง/อัปเดต <b>${sel.length}</b> นัด${dels.length?` และลบ <b>${dels.length}</b> นัดที่ไม่อยู่ในแผนแล้ว`:''}<br><span class="muted">ปฏิทิน: PRIM — ตารางงาน${CAL.o.invite?' · ส่งคำเชิญทางอีเมลถึงผู้รับผิดชอบ':''} · ยกเลิกได้ด้วยปุ่ม "ยกเลิกการลงครั้งล่าสุด"</span>`,'ลงปฏิทิน',async()=>{
+    const reopen={taskId:CAL.o.taskId};const body={action:'calPush',invite:CAL.o.invite,deletes:dels,events:sel.map(e=>({key:e.key,title:e.title,start:e.start,end:e.end,description:e.description,guests:e.guests,hash:e.hash}))};
+    toast('กำลังลงปฏิทิน… ('+sel.length+' นัด)');
+    try{const j=await gsCall(body);try{localStorage.setItem('prim_cal_last',JSON.stringify({batch:j.batch,n:j.created,at:Date.now(),p:CAL.p.id}));}catch(e){}
+      toast(`ลงปฏิทินแล้ว: สร้าง ${j.created} · อัปเดต ${j.updated}${j.deleted?' · ลบ '+j.deleted:''}${j.errors&&j.errors.length?' · ผิดพลาด '+j.errors.length:''}`);
+      openCalendar(reopen.taskId);}
+    catch(e){toast(/Authorization|authoriz|สิทธิ์|permission/i.test(e.message||'')?'ฐานข้อมูลยังไม่ได้รับสิทธิ์ใช้ปฏิทิน — ผู้ดูแลระบบต้องอนุญาตสิทธิ์ในหน้า Apps Script ก่อน':'ลงปฏิทินไม่สำเร็จ: '+e.message);}});
+}
+async function calUndo(){let last=null;try{last=JSON.parse(localStorage.getItem('prim_cal_last')||'null');}catch(e){}
+  if(!last||!last.batch){toast('ยังไม่มีการลงปฏิทินจากเครื่องนี้');return;}
+  askConfirm(`ลบนัดที่สร้างในการลงปฏิทินครั้งล่าสุด (${last.n} นัด เมื่อ ${new Date(last.at).toLocaleString('th-TH')})?`,'ลบนัดชุดนี้',async()=>{
+    try{const j=await gsCall({action:'calUndo',batch:last.batch});localStorage.removeItem('prim_cal_last');toast('ลบนัดแล้ว '+j.deleted+' รายการ');openCalendar(CAL.o.taskId);}catch(e){toast(e.message);}});}
+function calICS(){
+  const sel=calSel();if(!sel.length){toast('ยังไม่ได้เลือกนัด');return;}
+  const f=s=>String(s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+  const dt=(d,t)=>d.replace(/-/g,'')+'T'+t.replace(':','')+'00';
+  const fold=l=>{const out=[];let s=l;while(s.length>70){out.push(s.slice(0,70));s=' '+s.slice(70);}out.push(s);return out.join('\r\n');};
+  const stamp=new Date().toISOString().replace(/[-:]/g,'').slice(0,15)+'Z';
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//PRIM//Project & Resource Integrated Management//TH','CALSCALE:GREGORIAN','X-WR-CALNAME:PRIM — ตารางงาน',
+    'BEGIN:VTIMEZONE','TZID:Asia/Bangkok','BEGIN:STANDARD','DTSTART:19700101T000000','TZOFFSETFROM:+0700','TZOFFSETTO:+0700','TZNAME:ICT','END:STANDARD','END:VTIMEZONE'];
+  sel.forEach(e=>{lines.push('BEGIN:VEVENT','UID:'+e.key.replace(/\|/g,'-')+'@prim','DTSTAMP:'+stamp,'DTSTART;TZID=Asia/Bangkok:'+dt(e.date,e.from),'DTEND;TZID=Asia/Bangkok:'+dt(e.date,e.to),
+    fold('SUMMARY:'+f(e.title)),fold('DESCRIPTION:'+f(e.description)),...e.guests.map(g=>'ATTENDEE;CN='+f(g)+':mailto:'+g),'END:VEVENT');});
+  lines.push('END:VCALENDAR');
+  exportFile(fileBase(CAL.p)+'_ปฏิทิน_'+CAL.o.from+'.ics',lines.join('\r\n'));
+}
+
 initStore();
 </script>
 <script type="text/plain" id="gsCode">/**
@@ -2143,6 +2295,59 @@ function seedIfEmpty_() {
   p.setProperty('seeded', '1');
 }
 
+/* ═══════ ปฏิทิน Google (ลงนัดเมื่อผู้ใช้กดสั่งเท่านั้น) ═══════ */
+const CAL_H = ['key', 'eventId', 'hash', 'batch', 'createdBy', 'updatedAt', 'title', 'start'];
+const CAL_NAME = 'PRIM — ตารางงาน';
+function authorizeCalendar() { cal_(); return 'ok'; }   // กด "เรียกใช้" ฟังก์ชันนี้ 1 ครั้งเพื่ออนุญาตสิทธิ์ปฏิทิน
+function cal_() {
+  const p = PropertiesService.getScriptProperties(); const id = p.getProperty('calendarId');
+  if (id) { const c = CalendarApp.getCalendarById(id); if (c) return c; }
+  const found = CalendarApp.getCalendarsByName(CAL_NAME)[0];
+  const c = found || CalendarApp.createCalendar(CAL_NAME, { timeZone: 'Asia/Bangkok', color: CalendarApp.Color.BLUE });
+  p.setProperty('calendarId', c.getId()); return c;
+}
+function calRows_() {
+  const sh = sheet_('calendar', CAL_H); const v = sh.getDataRange().getValues(); const out = {};
+  for (let i = 1; i < v.length; i++) if (v[i][0]) out[String(v[i][0])] = { row: i + 1, key: String(v[i][0]), eventId: String(v[i][1]), hash: String(v[i][2]), batch: String(v[i][3]), title: String(v[i][6]), start: String(v[i][7]) };
+  return out;
+}
+function calStatus_(prefix) { const r = calRows_(); return Object.values(r).filter(x => x.key.indexOf(prefix) === 0).map(x => ({ key: x.key, hash: x.hash, batch: x.batch, title: x.title, start: x.start })); }
+function setGuests_(ev, emails) {
+  const want = new Set((emails || []).map(e => String(e).toLowerCase())); const have = ev.getGuestList().map(g => g.getEmail().toLowerCase());
+  have.forEach(e => { if (!want.has(e)) ev.removeGuest(e); }); want.forEach(e => { if (have.indexOf(e) < 0) ev.addGuest(e); });
+}
+function calPush_(q, user) {
+  const c = cal_(); const sh = sheet_('calendar', CAL_H); const rows = calRows_(); const batch = 'b' + Date.now();
+  const res = { created: 0, updated: 0, deleted: 0, batch: batch, errors: [] };
+  (q.deletes || []).forEach(key => {
+    const r = rows[key]; if (!r) return;
+    try { const ev = c.getEventById(r.eventId); if (ev) ev.deleteEvent(); } catch (e) {}
+    sh.getRange(r.row, 1, 1, CAL_H.length).clearContent(); res.deleted++;
+  });
+  (q.events || []).slice(0, 300).forEach(e => {
+    try {
+      const st = new Date(e.start), en = new Date(e.end); const r = rows[e.key];
+      let ev = null; if (r && r.eventId) { try { ev = c.getEventById(r.eventId); } catch (x) { ev = null; } }
+      if (ev) {
+        ev.setTitle(e.title); ev.setTime(st, en); ev.setDescription(e.description || ''); if (q.invite) setGuests_(ev, e.guests);
+        sh.getRange(r.row, 1, 1, CAL_H.length).setValues([[e.key, ev.getId(), e.hash, r.batch, user, new Date(), e.title, e.start]]); res.updated++;
+      } else {
+        const opt = { description: e.description || '' }; if (q.invite && e.guests && e.guests.length) { opt.guests = e.guests.join(','); opt.sendInvites = true; }
+        ev = c.createEvent(e.title, st, en, opt);
+        const vals = [[e.key, ev.getId(), e.hash, batch, user, new Date(), e.title, e.start]];
+        if (r) sh.getRange(r.row, 1, 1, CAL_H.length).setValues(vals); else sh.appendRow(vals[0]);
+        res.created++;
+      }
+    } catch (err) { res.errors.push(e.key + ': ' + err.message); }
+  });
+  return res;
+}
+function calUndo_(batch) {
+  const c = cal_(); const sh = sheet_('calendar', CAL_H); let n = 0;
+  Object.values(calRows_()).filter(r => r.batch === batch).forEach(r => { try { const ev = c.getEventById(r.eventId); if (ev) ev.deleteEvent(); } catch (e) {} sh.getRange(r.row, 1, 1, CAL_H.length).clearContent(); n++; });
+  return n;
+}
+
 function route_(q) {
   const a = q.action;
   if (a === 'ping') return { ok: true, time: Date.now(), needSetup: users_().length === 0 };
@@ -2198,6 +2403,15 @@ function route_(q) {
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try { const ts = write_(String(q.key), q.data, u.username, a === 'delete'); log_(u.username, a, q.key); return { ok: true, updatedAt: ts }; }
     finally { lock.releaseLock(); }
+  }
+  if (a === 'calStatus') return { ok: true, items: calStatus_(String(q.prefix || '')), calendar: CAL_NAME };
+  if (a === 'calPush' || a === 'calUndo') {
+    if (u.role === 'viewer') return { ok: false, error: 'read_only' };
+    const lock = LockService.getScriptLock(); lock.waitLock(25000);
+    try {
+      if (a === 'calPush') { const r = calPush_(q, u.username); log_(u.username, 'calendar_push', (q.events || []).length + ' events / ' + (q.deletes || []).length + ' deletes'); return Object.assign({ ok: true, calendar: CAL_NAME }, r); }
+      const n = calUndo_(String(q.batch || '')); log_(u.username, 'calendar_undo', q.batch); return { ok: true, deleted: n };
+    } finally { lock.releaseLock(); }
   }
   if (a === 'users') { if (u.role !== 'admin') return { ok: false, error: 'admin_only' }; return { ok: true, users: users_().map(pub_) }; }
   if (a === 'saveUser') {

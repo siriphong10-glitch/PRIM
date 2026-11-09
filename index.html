@@ -630,7 +630,7 @@ function renderView(){
   ({dashboard:renderDash,schedule:renderGantt,availability:renderAv,team:renderTeam,projects:renderProjects})[UI.view]();
 }
 $('projSel').onchange=e=>{UI.activeId=e.target.value;saveUI();renderAll();};
-$('ddInp').onchange=e=>{const p=proj();if(!p)return;p.dataDate=e.target.value;persistProject(p);renderView();};
+$('ddInp').onchange=e=>{const p=proj();if(!p)return;p.dataDate=e.target.value;persistProject(p);renderView();if(p.dataDate&&p.dataDate>todayStr())toast('⚠ Data Date ที่เลือก ('+fmtD(p.dataDate)+') อยู่ในอนาคต — งานที่ยังไม่บันทึกวันเริ่มจริงจะถูกเลื่อนไปหลังวันนี้');};
 
 function noProject(el){
   el.innerHTML=`<div class="card empty"><div style="font-size:16px;font-weight:600;margin-bottom:6px">ยังไม่มีโปรเจกต์</div>
@@ -651,6 +651,7 @@ function renderDash(){
   const La=buildLoad(DB.projects.filter(q=>q.status!=='closed'),from,to);const team=projTeam(p);
   const overM=team.filter(({m})=>days.some(d=>((L[m.id]||{})[d]||[]).length&&((La[m.id]||{})[d]||[]).length>=2));
   el.innerHTML=`
+  ${dd>todayStr()?`<div class="banner warn">⚠ Data Date (${fmtDw(dd)}) อยู่ในอนาคต — ระบบถือว่างานที่ยังไม่มีวันเริ่มจริง ยังไม่ได้เริ่มจนถึงวันนั้น จึงเลื่อนกำหนดการปัจจุบันไปหลัง Data Date ทั้งหมด หากไม่ได้ตั้งใจ ให้แก้ Data Date ที่แถบด้านบนเป็นวันที่อัปเดตข้อมูลจริง (ปกติคือวันนี้)</div>`:''}
   ${overM.length?`<div class="banner warn">⚠ มีบุคลากรที่ถูกมอบหมายงานซ้อนกันใน 14 วันข้างหน้า: ${overM.map(x=>esc(x.m.name)).join(', ')} — ตรวจสอบและปรับได้ที่หน้า <a href="#availability">ความว่างของทีม</a></div>`:''}
   ${S.R.cyc?'<div class="banner warn">⚠ พบความสัมพันธ์งานแบบวนซ้ำ (circular dependency) — งานที่อยู่ในวงจะไม่ถูกคำนวณ กรุณาตรวจสอบงานก่อนหน้า</div>':''}
   <div class="bar"><h2>${esc(p.name)}</h2><span class="pill gray">${esc(p.code||'—')}</span><span class="muted">Data Date: ${fmtDw(dd)}</span></div>
@@ -852,9 +853,12 @@ function renderTaskModal(){
     <span class="sp"></span><button class="btn" onclick="closeModal()">ยกเลิก</button>${draftIsNew?'<button class="btn" onclick="saveTask(true)">บันทึกและเพิ่มต่อ</button>':''}<button class="btn p" onclick="saveTask()">บันทึก</button></div>`,'lg',()=>{UI.selTask=null;});
 }
 function infoBanner(inf){const p=proj(),t=draft;let w='';
-  if(t&&t.plannedStart&&p&&t.plannedStart<p.startDate)w=`<div class="banner warn">⚠ วันที่วางแผนเริ่ม (${fmtD(t.plannedStart)}) อยู่ก่อนวันเริ่มโปรเจกต์ (${fmtD(p.startDate)}) — ระบบจะใช้วันเริ่มโปรเจกต์แทน ถ้าต้องการให้เริ่มก่อน ให้แก้วันเริ่มโปรเจกต์ที่ "ตั้งค่าโปรเจกต์"</div>`;
-  else if(t&&t.plannedStart&&inf&&!inf.cyc&&inf.ps>t.plannedStart&&t.preds.length)w=`<div class="banner warn">งานก่อนหน้าทำให้งานนี้เริ่มได้เร็วสุด ${fmtD(inf.ps)} ซึ่งช้ากว่าวันที่วางแผนไว้ (${fmtD(t.plannedStart)})</div>`;
-  else if(t&&!t.preds.length&&inf&&!inf.cyc)w=`<div class="muted" style="font-size:12px;margin-bottom:6px">งานนี้เป็นงานอิสระ (ไม่มีงานก่อนหน้า) — เริ่มตาม${t.plannedStart?'วันที่วางแผนเริ่ม':'วันเริ่มโปรเจกต์ (ระบุวันที่วางแผนเริ่มได้)'}</div>`;
+  const dd0=p&&(p.dataDate||todayStr());
+  if(inf&&!inf.cyc&&t&&!t.actualStart&&(+t.pct||0)<100&&inf.s>inf.ps&&dd0>=inf.ps){
+    w+=`<div class="banner warn">ทำไมวันเริ่มไม่ตรงกับแผน: แผนกำหนดเริ่ม ${fmtD(inf.ps)} แต่ ณ Data Date (${fmtD(dd0)}) งานนี้ยังไม่ได้บันทึก "วันเริ่มจริง" ระบบจึงคาดการณ์ว่าจะเริ่มได้หลัง Data Date คือ ${fmtD(inf.s)}${dd0>todayStr()?' — <b>Data Date ที่ตั้งไว้อยู่ในอนาคต</b> ถ้าไม่ได้ตั้งใจให้แก้ที่แถบด้านบนเป็นวันนี้':''} · ถ้าเริ่มงานแล้ว ให้ใส่วันเริ่มจริง</div>`;}
+  if(t&&t.plannedStart&&p&&t.plannedStart<p.startDate)w+=`<div class="banner warn">⚠ วันที่วางแผนเริ่ม (${fmtD(t.plannedStart)}) อยู่ก่อนวันเริ่มโปรเจกต์ (${fmtD(p.startDate)}) — ระบบจะใช้วันเริ่มโปรเจกต์แทน ถ้าต้องการให้เริ่มก่อน ให้แก้วันเริ่มโปรเจกต์ที่ "ตั้งค่าโปรเจกต์"</div>`;
+  else if(t&&t.plannedStart&&inf&&!inf.cyc&&inf.ps>t.plannedStart&&t.preds.length)w+=`<div class="banner warn">งานก่อนหน้าทำให้งานนี้เริ่มได้เร็วสุด ${fmtD(inf.ps)} ซึ่งช้ากว่าวันที่วางแผนไว้ (${fmtD(t.plannedStart)})</div>`;
+  else if(t&&!t.preds.length&&inf&&!inf.cyc)w+=`<div class="muted" style="font-size:12px;margin-bottom:6px">งานนี้เป็นงานอิสระ (ไม่มีงานก่อนหน้า) — เริ่มตาม${t.plannedStart?'วันที่วางแผนเริ่ม':'วันเริ่มโปรเจกต์ (ระบุวันที่วางแผนเริ่มได้)'}</div>`;
   return w+(inf&&!inf.cyc?`<div class="banner info">กำหนดการ${draftIsNew?' (ตัวอย่างก่อนบันทึก)':'ปัจจุบัน'}: ${fmtDw(inf.s)} – ${fmtDw(inf.f)} · แผน ${fmtD(inf.ps)} – ${fmtD(inf.pf)} · Total Float ${inf.tf} วัน${inf.crit?' · <b class="c-red">อยู่บนสายงานวิกฤต</b>':''}</div>`:'');}
 function refreshDG(){captureDraft();const p=proj();const {tmp,inf}=previewInfo(p,draft);if($('dgHost'))$('dgHost').innerHTML=dailyGrid(tmp,draft,inf);if($('t_info'))$('t_info').innerHTML=infoBanner(inf);}
 function captureDraft(){

@@ -87,6 +87,8 @@ table.t td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:mi
 
 /* gantt */
 #gwrap{flex:1;overflow:auto;position:relative;background:#fff}
+.segbtn{display:inline-flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden}.segbtn button{border:0;background:#fff;padding:6px 10px;cursor:pointer;font-weight:500}.segbtn button.on{background:var(--navy);color:#fff}
+.nbox:hover rect:first-of-type{filter:drop-shadow(0 3px 8px rgba(47,111,237,.25))}
 #ggrid{display:grid;position:relative}
 .g-corner{position:sticky;top:0;left:0;z-index:5;background:#fafbfc;border-bottom:1px solid var(--line2);border-right:1px solid var(--line2);display:grid;align-items:end}
 .g-head{position:sticky;top:0;z-index:4;background:#fafbfc;border-bottom:1px solid var(--line2)}
@@ -232,6 +234,13 @@ canvas{display:block;width:100%}
       <button class="btn" onclick="collapseAll(true)" title="ย่อทุกหัวข้อ">⊟</button><button class="btn" onclick="collapseAll(false)" title="ขยายทุกหัวข้อ">⊞</button>
       <button class="btn g" onclick="openExport()">↓ ส่งออกแผนงาน</button>
       <span class="sp"></span>
+      <span class="segbtn"><button id="vGantt" onclick="setSchView('gantt')">▤ Gantt</button><button id="vNet" onclick="setSchView('net')">⧉ แผนภาพงาน</button></span>
+      <span id="netCtl" class="hidden" style="display:inline-flex;gap:6px;align-items:center">
+        <label class="chk" id="nLanes" onclick="event.preventDefault();netOpt('lanes',!(UI.net&&UI.net.lanes))">แบ่งตามหัวข้องานใหญ่</label>
+        <label class="chk" id="nCrit" onclick="event.preventDefault();netOpt('critOnly',!(UI.net&&UI.net.critOnly))">เฉพาะสายงานวิกฤต</label>
+        <select class="sel" id="nScale" onchange="netOpt('scale',+this.value)"><option value="0.6">60%</option><option value="0.8">80%</option><option value="1">100%</option><option value="1.25">125%</option></select>
+        <button class="btn" onclick="exportNetPNG()">↓ PNG</button></span>
+      <span id="ganttCtl" style="display:inline-flex;gap:8px;align-items:center">
       <div class="legend">
         <span><i style="background:#8fb1f7"></i>แผน</span>
         <span><i style="background:#f08b96"></i>วิกฤต</span>
@@ -239,9 +248,10 @@ canvas{display:block;width:100%}
         <span><i style="background:repeating-linear-gradient(90deg,var(--purple) 0 4px,transparent 4px 7px)"></i>คาดการณ์</span>
       </div>
       <label class="lbl">ซูม</label>
-      <select class="sel" id="zoomSel"><option value="8">ไตรมาส</option><option value="14">เดือน</option><option value="24" selected>สัปดาห์</option><option value="36">วัน</option></select>
+      <select class="sel" id="zoomSel"><option value="8">ไตรมาส</option><option value="14">เดือน</option><option value="24" selected>สัปดาห์</option><option value="36">วัน</option></select></span>
     </div>
     <div id="gwrap"><div id="ggrid"></div></div>
+    <div id="netwrap" class="hidden" style="flex:1;overflow:auto;background:#fff"></div>
   </section>
 
   <!-- AVAILABILITY -->
@@ -337,7 +347,7 @@ function dateRange(a,b){const out=[];if(!a||!b||a>b)return out;let c=a,g=0;while
 let DB={projects:[],members:[]};
 let UI={view:'dashboard',activeId:null,avSel:null,hideSun:false,zoom:24,selTask:null,collapsed:{},rpt:null};
 try{const u=JSON.parse(localStorage.getItem('siriprim_ui')||'{}');Object.assign(UI,u);}catch(e){}
-function saveUI(){try{localStorage.setItem('siriprim_ui',JSON.stringify({activeId:UI.activeId,avSel:UI.avSel,hideSun:UI.hideSun,zoom:UI.zoom,collapsed:UI.collapsed,rpt:UI.rpt}));}catch(e){}}
+function saveUI(){try{localStorage.setItem('siriprim_ui',JSON.stringify({activeId:UI.activeId,avSel:UI.avSel,hideSun:UI.hideSun,zoom:UI.zoom,collapsed:UI.collapsed,rpt:UI.rpt,schView:UI.schView,net:UI.net}));}catch(e){}}
 const proj=()=>DB.projects.find(p=>p.id===UI.activeId)||DB.projects[0]||null;
 const memberById=id=>DB.members.find(m=>m.id===id);
 const isActiveM=m=>m&&m.active!==false;
@@ -734,6 +744,10 @@ function collapseAll(on){const p=proj();if(!p)return;UI.collapsed=UI.collapsed||
 function visibleRows(p){const TR=tree(p);const col=new Set(((UI.collapsed||{})[p.id])||[]);const out=[];const hidden=new Set();
   TR.rows.forEach(r=>{const par=r.t.parent;if(par!=null&&(hidden.has(par)||col.has(par))){hidden.add(r.t.id);return;}out.push(r);});return out;}
 function renderGantt(){
+  const net=UI.schView==='net';$('vGantt').classList.toggle('on',!net);$('vNet').classList.toggle('on',net);
+  $('netCtl').classList.toggle('hidden',!net);$('ganttCtl').style.display=net?'none':'inline-flex';$('gwrap').classList.toggle('hidden',net);$('netwrap').classList.toggle('hidden',!net);
+  if(net){UI.net=UI.net||{lanes:true,critOnly:false,scale:1};$('nLanes').classList.toggle('on',!!UI.net.lanes);$('nCrit').classList.toggle('on',!!UI.net.critOnly);$('nScale').value=String(UI.net.scale);
+    const p0=proj();if(p0)$('schTitle').textContent=(p0.code?p0.code+' · ':'')+p0.name;renderNetwork();return;}
   const p=proj();const grid=$('ggrid');$('zoomSel').value=String(UI.zoom);
   if(!p){grid.style.display='block';grid.innerHTML='';noProject(grid);return;}
   grid.style.display='grid';
@@ -1669,7 +1683,7 @@ function doExportMSP(){const p=proj();try{exportFile(fileBase(p)+'_MSProject.xml
 
 /* ─────────── PDF REPORT ─────────── */
 const RPT_DEF={paper:'A4',orient:'landscape',company:'บริษัท เพอร์ฟอร์มแมกซ์ บิวดิ้ง เซอร์วิซ จำกัด',title:'',preparer:'',checker:'',approver:'',
-  secSummary:true,secSCurve:true,secGantt:true,secTable:true,secDaily:false,secNotes:false,secSign:true,
+  secSummary:true,secSCurve:true,secGantt:true,secNet:false,secTable:true,secDaily:false,secNotes:false,secSign:true,
   gWbs:false,gDur:true,gDates:true,gPct:true,gAsg:true,gLinks:true,gActual:true,gCrit:true,gSumOnly:false,gRange:'all',gFrom:'',gTo:'',
   tPlan:true,tCur:true,tAct:true,tPct:true,tTF:false,tPred:true,tAsg:true};
 function rptOpts(){return Object.assign({},RPT_DEF,UI.rpt||{});}
@@ -1685,7 +1699,7 @@ function openReport(){
       <div class="f"><label>ช่วงเวลาของ Gantt</label><select data-k="gRange"><option value="all"${o.gRange==='all'?' selected':''}>ทั้งโครงการ</option><option value="custom"${o.gRange==='custom'?' selected':''}>กำหนดเอง</option></select></div>
       <div class="f"><label>ตั้งแต่ / ถึง (ถ้ากำหนดเอง)</label><div style="display:flex;gap:4px"><input type="date" style="min-width:0" data-k="gFrom" value="${o.gFrom}"><input type="date" style="min-width:0" data-k="gTo" value="${o.gTo}"></div></div></div>
     <div class="sec">ส่วนที่จะแสดงในรายงาน</div>
-    <div class="optg">${ck('secSummary','สรุปภาพรวมโครงการ')}${ck('secSCurve','กราฟ S-Curve (แผน vs จริง)')}${ck('secGantt','Gantt Chart')}${ck('secTable','ตารางรายการงาน')}${ck('secDaily','ตารางผู้รับผิดชอบรายวัน')}${ck('secNotes','หมายเหตุของงาน')}${ck('secSign','ช่องลงนาม')}</div>
+    <div class="optg">${ck('secSummary','สรุปภาพรวมโครงการ')}${ck('secSCurve','กราฟ S-Curve (แผน vs จริง)')}${ck('secGantt','Gantt Chart')}${ck('secNet','แผนภาพงาน (Network Diagram)')}${ck('secTable','ตารางรายการงาน')}${ck('secDaily','ตารางผู้รับผิดชอบรายวัน')}${ck('secNotes','หมายเหตุของงาน')}${ck('secSign','ช่องลงนาม')}</div>
     <div class="sec">รายละเอียด Gantt Chart</div>
     <div class="optg">${ck('gWbs','คอลัมน์ WBS')}${ck('gDur','คอลัมน์ระยะเวลา')}${ck('gDates','คอลัมน์วันเริ่ม–เสร็จ')}${ck('gPct','คอลัมน์ % ก้าวหน้า')}${ck('gAsg','คอลัมน์ผู้รับผิดชอบ')}
       ${ck('gLinks','เส้นความสัมพันธ์งาน')}${ck('gActual','แถบงานจริง / คาดการณ์')}${ck('gCrit','เน้นงานวิกฤตเป็นสีแดง')}${ck('gSumOnly','แสดงเฉพาะหัวข้องานใหญ่')}</div>
@@ -1815,6 +1829,17 @@ async function renderReport(p,o){
     function legendG(){const {x}=cur;let lx=M,ly=Math.min(cur.y+5*K,BOT-2*K);const it=[['#b9cff7','แผน'],['#3f72de','ทำแล้ว'],...(o.gCrit?[['#f6b3ba','งานวิกฤต']]:[]),['#3c4658','หัวข้องานใหญ่'],...(o.gActual?[['#1f9d62','จริง'],['#7a4fe0','คาดการณ์ (เส้นประ)']]:[]),['#d98a00','Data Date / Milestone']];
       it.forEach(([c,l])=>{x.fillStyle=c;x.fillRect(lx,ly-1.2*K,5*K,2.4*K);T(x,l,lx+6.5*K,ly,{size:7,color:'#5b6476'});x.font=`400 ${fpx(7)}px ${FONT}`;lx+=6.5*K+x.measureText(l).width+5*K;});cur.y=ly+4*K;}
   }
+  /* ── Network diagram ── */
+  if(o.secNet){const N=netLayout(p,{lanes:true});if(N.nodes.length){
+    newPage();secTitle('แผนภาพงาน (Network Diagram)');
+    const availH=BOT-cur.y-8*K;let sc=Math.max(0.55,Math.min(1.2,CW/N.W));
+    const colW=NET.W+NET.GX,rowH=NET.H+NET.GY;if(N.H*sc>availH&&N.W*sc<=CW)sc=Math.max(0.55,Math.min(sc,availH/N.H));const tileW=N.W*sc<=CW?N.W:Math.max(colW,Math.floor(CW/sc/colW)*colW),tileH=N.H*sc<=availH?N.H:Math.max(rowH,Math.floor(availH/sc/rowH)*rowH);
+    const tx=Math.ceil(N.W/tileW),ty=Math.ceil(N.H/tileH);let first=true;
+    for(let yy=0;yy<ty;yy++)for(let xx=0;xx<tx;xx++){
+      if(!first){newPage();secTitle('แผนภาพงาน (ต่อ) — ส่วนที่ '+(yy*tx+xx+1)+'/'+(tx*ty));}first=false;
+      const x0=M,y0=cur.y;const {x}=cur;x.save();x.beginPath();x.rect(x0,y0,CW,availH);x.clip();
+      drawNetCanvas(x,p,N,x0-xx*tileW*sc,y0-yy*tileH*sc,sc,{lanes:true});x.restore();cur.y=y0+Math.min(availH,(N.H-yy*tileH)*sc)+4*K;}
+    T(cur.x,'กรอบแดง = งานวิกฤต · ES/EF = วันเริ่ม/เสร็จเร็วสุด · LS/LF = วันเริ่ม/เสร็จช้าสุด · TF = Total Float (วัน)',M,Math.min(cur.y,BOT-3*K),{size:7.5,color:'#5b6476'});cur.y+=6*K;}}
   /* ── Task table ── */
   if(o.secTable){
     const numOf={};TR.rows.forEach(r=>numOf[r.t.id]=r.num);
@@ -2207,6 +2232,127 @@ function calICS(){
     fold('SUMMARY:'+f(e.title)),fold('DESCRIPTION:'+f(e.description)),...e.guests.map(g=>'ATTENDEE;CN='+f(g)+':mailto:'+g),'END:VEVENT');});
   lines.push('END:VCALENDAR');
   exportFile(fileBase(CAL.p)+'_ปฏิทิน_'+CAL.o.from+'.ics',lines.join('\r\n'));
+}
+
+
+/* ═══════════════ แผนภาพงาน (Network Diagram / Precedence Diagram) ═══════════════ */
+const NET={W:200,H:104,GX:70,GY:26};
+function netLayout(p,o){
+  o=o||{};const S=sched(p),TR=tree(p);
+  const num={},top={};TR.rows.forEach(r=>{num[r.t.id]=r.num;});
+  const topOf=t=>{let x=t,g=0;while(x&&x.parent!=null&&g<50){const pr=p.tasks.find(y=>y.id===x.parent);if(!pr)break;x=pr;g++;}return x&&isSum(x)?x:null;};
+  let L=leaves(p).filter(t=>S.info[t.id]&&!S.info[t.id].cyc);
+  if(o.critOnly)L=L.filter(t=>S.info[t.id].crit);
+  const ids=new Set(L.map(t=>t.id)),byId={};L.forEach(t=>byId[t.id]=t);
+  const preds=t=>(t.preds||[]).filter(r=>ids.has(r.id));
+  // rank = longest path (topological)
+  const rank={};const visit=(t,stack)=>{if(rank[t.id]!=null)return rank[t.id];if(stack.has(t.id))return 0;stack.add(t.id);
+    let r=0;preds(t).forEach(q=>{r=Math.max(r,visit(byId[q.id],stack)+1);});stack.delete(t.id);return rank[t.id]=r;};
+  L.forEach(t=>visit(t,new Set()));
+  // lanes by top-level summary
+  const laneKey=t=>{if(!o.lanes)return 'all';const s=topOf(t);return s?String(s.id):'none';};
+  const laneOrder=[];const laneName={};TR.rows.forEach(r=>{if(!ids.has(r.t.id))return;const k=laneKey(r.t);if(!laneOrder.includes(k)){laneOrder.push(k);const s=k==='all'||k==='none'?null:p.tasks.find(x=>String(x.id)===k);laneName[k]=s?(num[s.id]+' '+(s.abbr||s.name)):(k==='none'?'งานที่ไม่อยู่ใต้หัวข้อ':'');}});
+  // columns
+  const cols={};L.forEach(t=>{(cols[rank[t.id]]=cols[rank[t.id]]||[]).push(t);});
+  const maxR=Math.max(0,...Object.keys(cols).map(Number));
+  const ord={};TR.rows.forEach((r,i)=>ord[r.t.id]=i);
+  const pos={};
+  for(let c=0;c<=maxR;c++){const arr=cols[c]||[];
+    arr.sort((a,b)=>{const la=laneOrder.indexOf(laneKey(a)),lb=laneOrder.indexOf(laneKey(b));if(la!==lb)return la-lb;
+      const bary=t=>{const ps=preds(t).map(q=>pos[q.id]).filter(v=>v!=null);return ps.length?ps.reduce((s,v)=>s+v,0)/ps.length:ord[t.id];};
+      return bary(a)-bary(b)||ord[a.id]-ord[b.id];});
+    arr.forEach((t,i)=>pos[t.id]=i);}
+  // lane heights = max nodes of that lane in any column
+  const laneRows={};laneOrder.forEach(k=>laneRows[k]=1);
+  for(let c=0;c<=maxR;c++){const cnt={};(cols[c]||[]).forEach(t=>{const k=laneKey(t);cnt[k]=(cnt[k]||0)+1;});Object.entries(cnt).forEach(([k,n])=>laneRows[k]=Math.max(laneRows[k],n));}
+  const PADL=o.lanes?28:12,TOP=12;let y=TOP;const lanes=[];
+  laneOrder.forEach(k=>{const h=laneRows[k]*(NET.H+NET.GY)+(o.lanes?22:0);lanes.push({k,name:laneName[k],y,h});y+=h+(o.lanes?10:0);});
+  const laneY={};lanes.forEach(l=>laneY[l.k]=l);
+  const nodes=[];
+  for(let c=0;c<=maxR;c++){const idx={};(cols[c]||[]).forEach(t=>{const k=laneKey(t);const n=idx[k]=(idx[k]||0);idx[k]++;
+    const ln=laneY[k];nodes.push({t,i:S.info[t.id],num:num[t.id],x:PADL+c*(NET.W+NET.GX),y:ln.y+(o.lanes?22:0)+n*(NET.H+NET.GY),lane:k});});}
+  const at={};nodes.forEach(n=>at[n.t.id]=n);
+  const edges=[];nodes.forEach(n=>preds(n.t).forEach(r=>{const a=at[r.id];if(a)edges.push({a,b:n,r,crit:a.i.crit&&n.i.crit});}));
+  const W=PADL+(maxR+1)*(NET.W+NET.GX),H=y+10;
+  return {nodes,edges,lanes,W,H,S};
+}
+function netDates(p,i){const ls=i.ls!=null?wdDate(p,i.ls):'';const lf=i.ls!=null?(i.dur>0?wdDate(p,i.ls+i.dur-1):ls):'';return {es:i.s,ef:i.f,ls,lf};}
+function netBoxSVG(p,n,sel){
+  const {t,i,x,y}=n,W=NET.W,H=NET.H,d=netDates(p,i),pc=+t.pct||0;
+  const crit=i.crit&&pc<100,done=pc>=100,run=pc>0&&!done;
+  const stroke=crit?'#d93a4a':done?'#1f9d62':'#5d8ff2',head=crit?'#fde8ea':done?'#e5f6ec':run?'#e7efff':'#f4f6fa';
+  const nm=String(t.abbr||t.name);const nmT=nm.length>24?nm.slice(0,23)+'…':nm;
+  const asg=(t.assignees||[]).map(memberById).filter(Boolean).map(abbrOf).join(', ');
+  const cell=(cx,cy,lab,val)=>`<text x="${cx}" y="${cy}" font-size="9" fill="#98a1b2">${lab}</text><text x="${cx+20}" y="${cy}" font-size="10.5" fill="#1d2433" font-family="IBM Plex Mono,monospace">${esc(val)}</text>`;
+  return `<g class="nbox" data-id="${t.id}" transform="translate(${x},${y})" style="cursor:pointer">
+    <title>${esc(t.name)}</title>
+    <rect width="${W}" height="${H}" rx="6" fill="#fff" stroke="${stroke}" stroke-width="${crit?2.2:1.3}"/>
+    <path d="M0 6a6 6 0 0 1 6-6h${W-12}a6 6 0 0 1 6 6v18h-${W}z" fill="${head}"/>
+    <text x="8" y="16" font-size="10" fill="#5b6476" font-family="IBM Plex Mono,monospace">${esc(n.num)}</text>
+    <text x="${8+String(n.num).length*6.5+6}" y="16.5" font-size="11.5" font-weight="600" fill="#1d2433">${esc(nmT)}</text>
+    <line x1="0" y1="24" x2="${W}" y2="24" stroke="#e3e6eb"/>
+    ${cell(8,40,'ES',fmtS(d.es))}${cell(W/2+4,40,'EF',fmtS(d.ef))}
+    ${cell(8,56,'LS',fmtS(d.ls))}${cell(W/2+4,56,'LF',fmtS(d.lf))}
+    <line x1="0" y1="64" x2="${W}" y2="64" stroke="#e3e6eb"/>
+    <text x="8" y="78" font-size="10" fill="#5b6476">ระยะ <tspan font-weight="600" fill="#1d2433">${i.dur} วัน</tspan></text>
+    <text x="${W/2-6}" y="78" font-size="10" fill="#5b6476">TF <tspan font-weight="600" fill="${(i.tf??0)<=0?'#d93a4a':'#1d2433'}">${i.tf??'—'}</tspan></text>
+    <text x="${W-8}" y="78" font-size="10" text-anchor="end" font-weight="600" fill="${done?'#1f9d62':'#2f6fed'}">${pc}%</text>
+    <rect x="8" y="${H-18}" width="${W-16}" height="4" rx="2" fill="#eceef2"/><rect x="8" y="${H-18}" width="${(W-16)*pc/100}" height="4" rx="2" fill="${done?'#1f9d62':crit?'#e35d6c':'#5d8ff2'}"/>
+    <text x="8" y="${H-4}" font-size="9" fill="#5b6476">${esc(asg.length>34?asg.slice(0,33)+'…':asg)}</text>
+  </g>`;
+}
+function netEdgePath(e){
+  const {a,b,r}=e,W=NET.W,H=NET.H;const fe=r.type==='FS'||r.type==='FF',te=r.type==='FF'||r.type==='SF';
+  const x1=a.x+(fe?W:0),y1=a.y+H/2,x2=b.x+(te?W:0),y2=b.y+H/2;
+  const k=Math.max(30,Math.abs(x2-x1)/2);const c1=x1+(fe?k:-k),c2=x2+(te?k:-k);
+  return {d:`M${x1} ${y1}C${c1} ${y1} ${c2} ${y2} ${x2} ${y2}`,x2,y2,te,mx:(x1+x2)/2,my:(y1+y2)/2};
+}
+function renderNetwork(){
+  const p=proj();const host=$('netwrap');
+  if(!p){host.innerHTML='';const d=document.createElement('div');host.appendChild(d);noProject(d);return;}
+  UI.net=UI.net||{lanes:true,critOnly:false,scale:1};
+  const N=netLayout(p,UI.net);const sc=UI.net.scale;
+  if(!N.nodes.length){host.innerHTML='<div class="empty">ยังไม่มีงานย่อยที่จะแสดง'+(UI.net.critOnly?' (ตัวกรอง: เฉพาะสายงานวิกฤต)':'')+'</div>';return;}
+  let svg=`<defs><marker id="na" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4 0 8z" fill="#8e99ae"/></marker><marker id="nar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4 0 8z" fill="#d93a4a"/></marker></defs>`;
+  N.lanes.forEach((l,k)=>{if(!UI.net.lanes)return;svg+=`<rect x="4" y="${l.y}" width="${N.W}" height="${l.h}" rx="8" fill="${k%2?'#f7f8fb':'#fbfcfe'}" stroke="#e8ebf0"/><text x="16" y="${l.y+16}" font-size="12" font-weight="700" fill="#3c4658">${esc(l.name)}</text>`;});
+  N.edges.forEach(e=>{const g=netEdgePath(e);const lab=e.r.type!=='FS'||e.r.lag?e.r.type+(e.r.lag?(e.r.lag>0?'+':'')+e.r.lag:''):'';
+    svg+=`<path d="${g.d}" fill="none" stroke="${e.crit?'#d93a4a':'#9aa6bd'}" stroke-width="${e.crit?2.2:1.2}" marker-end="url(#na${e.crit?'r':''})"/>`;
+    if(lab)svg+=`<rect x="${g.mx-17}" y="${g.my-9}" width="34" height="15" rx="7" fill="#fff" stroke="#d0d5dd"/><text x="${g.mx}" y="${g.my+2}" font-size="9.5" text-anchor="middle" fill="#3c4658" font-family="IBM Plex Mono,monospace">${lab}</text>`;});
+  N.nodes.forEach(n=>svg+=netBoxSVG(p,n));
+  host.innerHTML=`<div style="position:relative;padding:8px"><svg id="netsvg" xmlns="http://www.w3.org/2000/svg" width="${N.W*sc}" height="${N.H*sc}" viewBox="0 0 ${N.W} ${N.H}" style="font-family:'IBM Plex Sans Thai',sans-serif">${svg}</svg></div>`;
+  host.querySelectorAll('.nbox').forEach(g=>g.addEventListener('click',()=>openTask(+g.dataset.id)));
+}
+function setSchView(v){UI.schView=v;saveUI();renderGantt();}
+function netOpt(k,v){UI.net=UI.net||{lanes:true,critOnly:false,scale:1};UI.net[k]=v;saveUI();renderGantt();}
+async function exportNetPNG(){
+  const p=proj();if(!p)return;const N=netLayout(p,UI.net||{lanes:true});if(!N.nodes.length){toast('ไม่มีงานให้ส่งออก');return;}
+  const c=document.createElement('canvas');const k=2;c.width=N.W*k;c.height=N.H*k;const x=c.getContext('2d');x.scale(k,k);x.fillStyle='#fff';x.fillRect(0,0,N.W,N.H);
+  drawNetCanvas(x,p,N,0,0,1,UI.net||{lanes:true});
+  const b64=c.toDataURL('image/png').split(',')[1],bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+  exportFile(fileBase(p)+'_แผนภาพงาน.png',u);
+}
+function drawNetCanvas(x,p,N,ox,oy,s,o){ // shared by PNG export and PDF report
+  const F='"IBM Plex Sans Thai",Tahoma,sans-serif',M='"IBM Plex Mono",monospace';
+  const T=(t,X,Y,sz,col,opt={})=>{x.font=`${opt.bold?600:400} ${sz*s}px ${opt.mono?M:F}`;x.fillStyle=col;x.textAlign=opt.align||'left';x.textBaseline='alphabetic';x.fillText(t,ox+X*s,oy+Y*s);x.textAlign='left';};
+  const rr=(X,Y,w,h,r)=>{x.beginPath();x.roundRect?x.roundRect(ox+X*s,oy+Y*s,w*s,h*s,r*s):x.rect(ox+X*s,oy+Y*s,w*s,h*s);};
+  if(o.lanes)N.lanes.forEach((l,k)=>{rr(4,l.y,N.W-4,l.h,8);x.fillStyle=k%2?'#f7f8fb':'#fbfcfe';x.fill();x.strokeStyle='#e8ebf0';x.lineWidth=1*s;x.stroke();T(l.name,16,l.y+16,12,'#3c4658',{bold:true});});
+  N.edges.forEach(e=>{const W=NET.W,H=NET.H,{a,b,r}=e;const fe=r.type==='FS'||r.type==='FF',te=r.type==='FF'||r.type==='SF';
+    const x1=a.x+(fe?W:0),y1=a.y+H/2,x2=b.x+(te?W:0),y2=b.y+H/2,k=Math.max(30,Math.abs(x2-x1)/2),c1=x1+(fe?k:-k),c2=x2+(te?k:-k);
+    x.strokeStyle=e.crit?'#d93a4a':'#9aa6bd';x.lineWidth=(e.crit?2.2:1.2)*s;x.beginPath();x.moveTo(ox+x1*s,oy+y1*s);x.bezierCurveTo(ox+c1*s,oy+y1*s,ox+c2*s,oy+y2*s,ox+x2*s,oy+y2*s);x.stroke();
+    const dir=te?-1:1;x.fillStyle=x.strokeStyle;x.beginPath();x.moveTo(ox+x2*s,oy+y2*s);x.lineTo(ox+(x2-dir*8)*s,oy+(y2-4)*s);x.lineTo(ox+(x2-dir*8)*s,oy+(y2+4)*s);x.fill();
+    const lab=r.type!=='FS'||r.lag?r.type+(r.lag?(r.lag>0?'+':'')+r.lag:''):'';if(lab){const mx=(x1+x2)/2,my=(y1+y2)/2;rr(mx-17,my-9,34,15,7);x.fillStyle='#fff';x.fill();x.strokeStyle='#d0d5dd';x.lineWidth=1*s;x.stroke();T(lab,mx,my+2,9.5,'#3c4658',{mono:true,align:'center'});}});
+  N.nodes.forEach(n=>{const {t,i}=n,W=NET.W,H=NET.H,X=n.x,Y=n.y,d=netDates(p,i),pc=+t.pct||0,crit=i.crit&&pc<100,done=pc>=100,run=pc>0&&!done;
+    const stroke=crit?'#d93a4a':done?'#1f9d62':'#5d8ff2',head=crit?'#fde8ea':done?'#e5f6ec':run?'#e7efff':'#f4f6fa';
+    rr(X,Y,W,H,6);x.fillStyle='#fff';x.fill();x.save();x.clip();x.fillStyle=head;x.fillRect(ox+X*s,oy+Y*s,W*s,24*s);x.restore();
+    rr(X,Y,W,H,6);x.strokeStyle=stroke;x.lineWidth=(crit?2.2:1.3)*s;x.stroke();
+    x.strokeStyle='#e3e6eb';x.lineWidth=1*s;[24,64].forEach(yy=>{x.beginPath();x.moveTo(ox+X*s,oy+(Y+yy)*s);x.lineTo(ox+(X+W)*s,oy+(Y+yy)*s);x.stroke();});
+    const nm=String(t.abbr||t.name);T(n.num,X+8,Y+16,10,'#5b6476',{mono:true});
+    x.font=`600 ${11.5*s}px ${F}`;let tt=nm;const mw=(W-16-String(n.num).length*6.5-6)*s;while(tt.length>1&&x.measureText(tt).width>mw)tt=tt.slice(0,-1);if(tt!==nm)tt=tt.slice(0,-1)+'…';
+    T(tt,X+8+String(n.num).length*6.5+6,Y+16.5,11.5,'#1d2433',{bold:true});
+    [['ES',d.es,8,40],['EF',d.ef,W/2+4,40],['LS',d.ls,8,56],['LF',d.lf,W/2+4,56]].forEach(([l,v,cx,cy])=>{T(l,X+cx,Y+cy,9,'#98a1b2');T(fmtS(v),X+cx+20,Y+cy,10.5,'#1d2433',{mono:true});});
+    T('ระยะ '+i.dur+' วัน',X+8,Y+78,10,'#1d2433');T('TF '+(i.tf??'—'),X+W/2-6,Y+78,10,(i.tf??0)<=0?'#d93a4a':'#1d2433',{bold:true});T(pc+'%',X+W-8,Y+78,10,done?'#1f9d62':'#2f6fed',{bold:true,align:'right'});
+    rr(X+8,Y+H-18,W-16,4,2);x.fillStyle='#eceef2';x.fill();if(pc){rr(X+8,Y+H-18,(W-16)*pc/100,4,2);x.fillStyle=done?'#1f9d62':crit?'#e35d6c':'#5d8ff2';x.fill();}
+    const asg=(t.assignees||[]).map(memberById).filter(Boolean).map(abbrOf).join(', ');T(asg.length>34?asg.slice(0,33)+'…':asg,X+8,Y+H-4,9,'#5b6476');});
 }
 
 initStore();

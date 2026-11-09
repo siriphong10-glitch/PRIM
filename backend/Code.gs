@@ -102,14 +102,13 @@ function seedIfEmpty_() {
 
 /* ═══════ ปฏิทิน Google (ลงนัดเมื่อผู้ใช้กดสั่งเท่านั้น) ═══════ */
 const CAL_H = ['key', 'eventId', 'hash', 'batch', 'createdBy', 'updatedAt', 'title', 'start'];
-const CAL_NAME = 'PRIM — ตารางงาน';
-function authorizeCalendar() { cal_(); return 'ok'; }   // กด "เรียกใช้" ฟังก์ชันนี้ 1 ครั้งเพื่ออนุญาตสิทธิ์ปฏิทิน
-function cal_() {
-  const p = PropertiesService.getScriptProperties(); const id = p.getProperty('calendarId');
+// ลงในปฏิทินหลักของบัญชีที่ติดตั้งสคริปต์ (performaxteam@gmail.com) สี Flamingo — ตั้ง Script Property "calendarId" เพื่อใช้ปฏิทินอื่น
+const CAL_NAME = 'ปฏิทินหลัก performaxteam@gmail.com';
+function authorizeCalendar() { const c = primCal_(); return c.getName(); }   // กด "เรียกใช้" ฟังก์ชันนี้ 1 ครั้งเพื่ออนุญาตสิทธิ์ปฏิทิน
+function primCal_() {
+  const id = PropertiesService.getScriptProperties().getProperty('calendarId');
   if (id) { const c = CalendarApp.getCalendarById(id); if (c) return c; }
-  const found = CalendarApp.getCalendarsByName(CAL_NAME)[0];
-  const c = found || CalendarApp.createCalendar(CAL_NAME, { timeZone: 'Asia/Bangkok', color: CalendarApp.Color.BLUE });
-  p.setProperty('calendarId', c.getId()); return c;
+  return CalendarApp.getDefaultCalendar();
 }
 function calRows_() {
   const sh = sheet_('calendar', CAL_H); const v = sh.getDataRange().getValues(); const out = {};
@@ -122,7 +121,7 @@ function setGuests_(ev, emails) {
   have.forEach(e => { if (!want.has(e)) ev.removeGuest(e); }); want.forEach(e => { if (have.indexOf(e) < 0) ev.addGuest(e); });
 }
 function calPush_(q, user) {
-  const c = cal_(); const sh = sheet_('calendar', CAL_H); const rows = calRows_(); const batch = 'b' + Date.now();
+  const c = primCal_(); const sh = sheet_('calendar', CAL_H); const rows = calRows_(); const batch = 'b' + Date.now();
   const res = { created: 0, updated: 0, deleted: 0, batch: batch, errors: [] };
   (q.deletes || []).forEach(key => {
     const r = rows[key]; if (!r) return;
@@ -138,7 +137,7 @@ function calPush_(q, user) {
         sh.getRange(r.row, 1, 1, CAL_H.length).setValues([[e.key, ev.getId(), e.hash, r.batch, user, new Date(), e.title, e.start]]); res.updated++;
       } else {
         const opt = { description: e.description || '' }; if (q.invite && e.guests && e.guests.length) { opt.guests = e.guests.join(','); opt.sendInvites = true; }
-        ev = c.createEvent(e.title, st, en, opt);
+        ev = c.createEvent(e.title, st, en, opt); try { ev.setColor(CalendarApp.EventColor.PALE_RED); ev.setTag('pmisKey', e.key); } catch (x) {}
         const vals = [[e.key, ev.getId(), e.hash, batch, user, new Date(), e.title, e.start]];
         if (r) sh.getRange(r.row, 1, 1, CAL_H.length).setValues(vals); else sh.appendRow(vals[0]);
         res.created++;
@@ -148,7 +147,7 @@ function calPush_(q, user) {
   return res;
 }
 function calUndo_(batch) {
-  const c = cal_(); const sh = sheet_('calendar', CAL_H); let n = 0;
+  const c = primCal_(); const sh = sheet_('calendar', CAL_H); let n = 0;
   Object.values(calRows_()).filter(r => r.batch === batch).forEach(r => { try { const ev = c.getEventById(r.eventId); if (ev) ev.deleteEvent(); } catch (e) {} sh.getRange(r.row, 1, 1, CAL_H.length).clearContent(); n++; });
   return n;
 }

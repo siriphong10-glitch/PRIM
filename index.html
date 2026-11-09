@@ -409,14 +409,14 @@ function removeProjectStore(id){
 }
 function sanitizeProject(p){
   if(!p||typeof p!=='object')return null;
-  const q={id:String(p.id||uid('p')),name:String(p.name||'โปรเจกต์'),code:String(p.code||''),color:p.color||COLORS[0],
+  const q={id:String(p.id||uid('p')),name:String(p.name||'โปรเจกต์'),code:String(p.code||''),abbr:String(p.abbr||''),color:p.color||COLORS[0],
     startDate:isDate(p.startDate)?p.startDate:todayStr(),dataDate:isDate(p.dataDate)?p.dataDate:'',
     workdays:Array.isArray(p.workdays)&&p.workdays.length?p.workdays.map(Number):[1,2,3,4,5,6],
     holidays:Array.isArray(p.holidays)?p.holidays.filter(isDate):[],
     tasks:Array.isArray(p.tasks)?p.tasks:[],progressLog:Array.isArray(p.progressLog)?p.progressLog:[],
     nextTask:+p.nextTask||1,createdAt:+p.createdAt||Date.now(),updatedAt:+p.updatedAt||Date.now(),owner:p.owner||'',
     status:['planning','active','onhold','closed'].includes(p.status)?p.status:'active',team:Array.isArray(p.team)?p.team.filter(x=>x&&x.id).map(x=>({id:String(x.id),role:String(x.role||'')})):null};
-  q.tasks=q.tasks.filter(t=>t&&typeof t==='object').map(t=>({id:+t.id,type:t.type==='summary'?'summary':'task',parent:t.parent==null||t.parent===''?null:+t.parent,name:String(t.name||''),wbs:String(t.wbs||''),dur:Math.max(0,+t.dur||0),
+  q.tasks=q.tasks.filter(t=>t&&typeof t==='object').map(t=>({id:+t.id,abbr:String(t.abbr||''),type:t.type==='summary'?'summary':'task',parent:t.parent==null||t.parent===''?null:+t.parent,name:String(t.name||''),wbs:String(t.wbs||''),dur:Math.max(0,+t.dur||0),
     plannedStart:isDate(t.plannedStart)?t.plannedStart:'',actualStart:isDate(t.actualStart)?t.actualStart:'',actualFinish:isDate(t.actualFinish)?t.actualFinish:'',
     pct:Math.min(100,Math.max(0,+t.pct||0)),weight:t.weight===''||t.weight==null?'':+t.weight,note:String(t.note||''),
     preds:Array.isArray(t.preds)?t.preds.map(r=>({id:+r.id,type:['FS','SS','FF','SF'].includes(r.type)?r.type:'FS',lag:+r.lag||0})):[],
@@ -847,6 +847,7 @@ function renderTaskModal(){
     <div class="fr"><div class="f" style="grid-column:span 2"><label>ชื่องาน</label><input id="t_name" value="${esc(t.name)}" placeholder="เช่น งานเทคอนกรีตพื้นชั้น 2"></div>
       <div class="f"><label>อยู่ภายใต้หัวข้องานใหญ่</label><select id="t_par">${parOpts}</select></div></div>
     <div class="fr">
+      <div class="f"><label>ชื่อย่องาน (ใช้ลงปฏิทิน)</label><input id="t_abbr" maxlength="30" value="${esc(t.abbr||'')}" placeholder="เช่น รวบรวมแบบ"></div>
       <div class="f"><label>รหัส WBS (ไม่บังคับ)</label><input id="t_wbs" value="${esc(t.wbs)}" placeholder="1.2"></div>
       <div class="f"><label>ระยะเวลา (วันทำงาน, 0 = Milestone)</label><input id="t_dur" type="number" min="0" value="${t.dur}" onchange="refreshDG()"></div>
       <div class="f"><label title="ไม่มีงานก่อนหน้า = เริ่มวันนี้ตามแผน · มีงานก่อนหน้า = เริ่มไม่ก่อนวันนี้">วันที่วางแผนเริ่ม (ไม่บังคับ)</label><input id="t_ps" type="date" value="${t.plannedStart}" onchange="refreshDG()"></div>
@@ -887,7 +888,7 @@ function infoBanner(inf){const p=proj(),t=draft;let w='';
 function refreshDG(){captureDraft();const p=proj();const {tmp,inf}=previewInfo(p,draft);if($('dgHost'))$('dgHost').innerHTML=dailyGrid(tmp,draft,inf);if($('t_info'))$('t_info').innerHTML=infoBanner(inf);}
 function captureDraft(){
   if(!$('t_name'))return;
-  draft.name=$('t_name').value.trim();draft.wbs=$('t_wbs').value.trim();draft.dur=Math.max(0,parseInt($('t_dur').value)||0);
+  draft.name=$('t_name').value.trim();draft.abbr=$('t_abbr').value.trim();draft.wbs=$('t_wbs').value.trim();draft.dur=Math.max(0,parseInt($('t_dur').value)||0);
   draft.parent=$('t_par').value===''?null:+$('t_par').value;
   draft.plannedStart=$('t_ps').value;draft.weight=$('t_w').value===''?'':+$('t_w').value;
   draft.actualStart=$('t_as').value;draft.actualFinish=$('t_af').value;draft.pct=Math.min(100,Math.max(0,+$('t_pct').value||0));draft.note=$('t_note').value;
@@ -1273,7 +1274,8 @@ function openProject(id){
   const wd=pdraft.workdays;
   openModal(`<div class="mh">${p?'ตั้งค่าโปรเจกต์':'สร้างโปรเจกต์ใหม่'}<button class="x" onclick="closeModal()">×</button></div>
   <div class="mb"><div class="fr"><div class="f" style="grid-column:1/-1"><label>ชื่อโปรเจกต์</label><input id="p_name" value="${esc(pdraft.name)}"></div></div>
-  <div class="fr"><div class="f"><label>รหัสโปรเจกต์ (ย่อ)</label><input id="p_code" value="${esc(pdraft.code)}" placeholder="เช่น ST691003"></div>
+  <div class="fr"><div class="f"><label>รหัสโปรเจกต์</label><input id="p_code" value="${esc(pdraft.code)}" placeholder="เช่น ST691003"></div>
+    <div class="f"><label>ชื่อย่อโครงการ (ใช้ลงปฏิทิน)</label><input id="p_abbr" maxlength="20" value="${esc(pdraft.abbr||'')}" placeholder="เช่น Magnolias"></div>
     <div class="f"><label>สี</label><input id="p_color" type="color" value="${pdraft.color}" style="height:34px;padding:2px"></div>
     <div class="f"><label>วันเริ่มโปรเจกต์</label><input id="p_start" type="date" value="${pdraft.startDate}"></div>
     <div class="f"><label>Data Date</label><input id="p_dd" type="date" value="${pdraft.dataDate||''}"></div>
@@ -1287,7 +1289,7 @@ function openProject(id){
 function saveProject(){
   const name=$('p_name').value.trim();if(!name){toast('กรุณาระบุชื่อโปรเจกต์');return;}
   const wd=[...document.querySelectorAll('#p_wd input:checked')].map(i=>+i.value);if(!wd.length){toast('เลือกวันทำงานอย่างน้อย 1 วัน');return;}
-  const upd={name,code:$('p_code').value.trim(),color:$('p_color').value,startDate:$('p_start').value||todayStr(),dataDate:$('p_dd').value,workdays:wd,status:$('p_st').value,
+  const upd={name,code:$('p_code').value.trim(),abbr:$('p_abbr').value.trim(),color:$('p_color').value,startDate:$('p_start').value||todayStr(),dataDate:$('p_dd').value,workdays:wd,status:$('p_st').value,
     holidays:$('p_hol').value.split(/\s+/).filter(isDate)};
   if(pdraft._new){const p=sanitizeProject(Object.assign({id:pdraft.id,tasks:[],createdAt:Date.now()},upd));DB.projects.push(p);UI.activeId=p.id;saveUI();persistProject(p);}
   else{const p=DB.projects.find(x=>x.id===pdraft.id);Object.assign(p,upd);persistProject(p);}
@@ -2088,6 +2090,8 @@ function gsDisconnect(){askConfirm('ยกเลิกการเชื่อ�
 
 
 /* ═══════════════ ลงนัดในปฏิทิน (กดสั่งเท่านั้น — ตรวจรายการก่อนสร้าง) ═══════════════ */
+const projAbbr=p=>String(p.abbr||'').trim()||p.code||p.name.slice(0,20);
+const taskAbbr=t=>String(t.abbr||'').trim()||t.name;
 function blocksOf(slots){ // รวมช่วงที่ติดกัน: เช้า+บ่าย = 09:00–18:00, บ่าย+OT = 14:00–20:00
   const ks=SLOT_KEYS.filter(k=>slots.includes(k));const out=[];
   ks.forEach(k=>{const l=out[out.length-1];if(l&&SLOT_KEYS.indexOf(k)===SLOT_KEYS.indexOf(l.last)+1){l.to=SLOTS[k].to;l.last=k;l.keys.push(k);}else out.push({from:SLOTS[k].from,to:SLOTS[k].to,last:k,keys:[k]});});
@@ -2105,8 +2109,8 @@ function calEvents(p,o){ // o:{from,to,taskId,members:Set|null,ot:boolean}
         blocksOf(sl).forEach(b=>{const k=b.from+'-'+b.to;(groups[k]=groups[k]||{b,ms:[]}).ms.push(m);});});
       Object.values(groups).forEach(({b,ms})=>{
         const ab=ms.map(abbrOf).join(', ');
-        const title=`เข้างาน ${p.code||p.name.slice(0,20)}-${t.name} (${ms.map(abbrOf).join(',')})`;
-        const desc=`โครงการ: ${p.name}${p.code?' ('+p.code+')':''}\nงาน: ${num[t.id]} ${parentName[t.id]?parentName[t.id]+' › ':''}${t.name}\nผู้รับผิดชอบ: ${ms.map(m=>m.name+(m.abbr?' ('+m.abbr+')':'')).join(', ')}\nช่วงเวลา: ${b.keys.map(k=>SLOTS[k].l).join(' + ')} ${b.from}–${b.to}${t.note?'\nหมายเหตุ: '+t.note:''}\n— สร้างจาก PRIM`;
+        const title=`เข้างาน ${projAbbr(p)}-${taskAbbr(t)} (${ms.map(abbrOf).join(',')})`;
+        const desc=`โครงการ: ${projAbbr(p)}\nงาน: ${taskAbbr(t)}\nผู้เข้าร่วม: ${ms.map(abbrOf).join(', ')}\nเวลา: ${b.from}–${b.to}\n— PRIM`;
         const key=`${p.id}|${t.id}|${d}|${b.from}`;
         const guests=ms.map(m=>m.email).filter(e=>e&&/@/.test(e));
         ev.push({key,date:d,from:b.from,to:b.to,start:`${d}T${b.from}:00+07:00`,end:`${d}T${b.to}:00+07:00`,title,description:desc,guests,ms,t,hash:hashStr(title+'|'+b.to+'|'+desc+'|'+guests.join(','))});});
@@ -2123,7 +2127,7 @@ function openCalendar(taskId){
   const t=taskId!=null?p.tasks.find(x=>x.id===taskId):null;
   openModal(`<div class="mh">📅 ลงนัดในปฏิทิน — ${esc(p.code||p.name)}${t?' · '+esc(t.name):''}<button class="x" onclick="closeModal()">×</button></div>
   <div class="mb">
-    <div class="banner info">ระบบจะไม่ลงปฏิทินเอง — ตรวจรายการด้านล่าง เลือกเฉพาะนัดที่ต้องการ แล้วกด "ลงปฏิทิน Google" ${canPush?'· นัดจะลงใน<b>ปฏิทินหลักของ performaxteam@gmail.com</b> (สี Flamingo) ชื่อนัดรูปแบบ "เข้างาน โครงการ-งานย่อย (ชื่อย่อ)" · กดลงซ้ำได้ ระบบจะอัปเดตนัดเดิม ไม่สร้างนัดซ้อน':'· <b>หน้านี้ยังไม่ได้เชื่อมต่อฐานข้อมูลกลาง</b> จึงลงปฏิทิน Google โดยตรงไม่ได้ — ใช้ "ดาวน์โหลด .ics" แล้วนำเข้า Google Calendar / Outlook แทน'}</div>
+    <div class="banner info">ระบบจะไม่ลงปฏิทินเอง — ตรวจรายการด้านล่าง เลือกเฉพาะนัดที่ต้องการ แล้วกด "ลงปฏิทิน Google" ${canPush?'· นัดจะลงใน<b>ปฏิทินหลักของ performaxteam@gmail.com</b> (สี Flamingo) ชื่อนัดรูปแบบ "เข้างาน โครงการ-งานย่อย (ชื่อย่อ)" · กดลงซ้ำได้ ระบบจะอัปเดตนัดเดิม ไม่สร้างนัดซ้อน':`· <b>หน้านี้ลงปฏิทินโดยตรงไม่ได้</b> (${Store.inFrame?'เป็นสำเนาบน claude.ai':'ยังไม่ได้เข้าสู่ระบบฐานข้อมูลกลาง'}) — กด <a href="https://siriphong10-glitch.github.io/PRIM/" target="_blank" rel="noopener"><b>เปิด PRIM บนเว็บ</b></a> แล้วกดปุ่มนี้อีกครั้ง ระบบจะสร้างนัดให้ทันทีหลังกดยืนยัน`}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <label class="lbl">ตั้งแต่</label><input type="date" class="inp" id="cFrom" value="${from}"><label class="lbl">ถึง</label><input type="date" class="inp" id="cTo" value="${to}">
       ${t?'':''}<label class="chk on"><input type="checkbox" id="cOT" checked style="display:none" onchange="this.parentNode.classList.toggle('on',this.checked)">รวม OT</label>
@@ -2131,10 +2135,11 @@ function openCalendar(taskId){
       <button class="btn" onclick="calRefresh()">⟳ แสดงรายการ</button></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><span class="lbl">ผู้รับผิดชอบ:</span>
       ${team.map(m=>`<label class="chk on"><input type="checkbox" class="cMem" value="${esc(m.id)}" checked style="display:none" onchange="this.parentNode.classList.toggle('on',this.checked)">${avatar(m,18)} ${esc(abbrOf(m))}</label>`).join('')||'<span class="muted">ยังไม่มีทีมโครงการ</span>'}</div>
+    <div id="cAbbr"></div>
     <div id="cList" class="muted">กำลังเตรียมรายการ…</div>
   </div>
   <div class="mf">${canPush?'<button class="btn" id="cUndo" onclick="calUndo()" title="ลบนัดที่สร้างในการลงปฏิทินครั้งล่าสุด">↶ ยกเลิกการลงครั้งล่าสุด</button>':''}<span class="sp"></span>
-    <button class="btn" onclick="calICS()">↓ ดาวน์โหลด .ics</button>${canPush?'<button class="btn p" id="cGo" onclick="calPush()">📅 ลงปฏิทิน Google</button>':''}</div>`,'lg');
+    <button class="btn" onclick="calICS()">↓ ดาวน์โหลด .ics</button>${canPush?'<button class="btn p" id="cGo" onclick="calPush()">📅 ลงปฏิทิน Google</button>':'<a class="btn p" href="https://siriphong10-glitch.github.io/PRIM/" target="_blank" rel="noopener" style="text-decoration:none">เปิด PRIM บนเว็บเพื่อลงปฏิทิน ↗</a>'}</div>`,'lg');
   try{const last=JSON.parse(localStorage.getItem('prim_cal_last')||'null');if($('cUndo'))$('cUndo').disabled=!(last&&last.batch);}catch(e){}
   calRefresh();
 }
@@ -2149,7 +2154,20 @@ async function calRefresh(){
     catch(e){if(e.message&&/Authorization|สิทธิ์|permission|CalendarApp/i.test(e.message))toast('ฐานข้อมูลยังไม่ได้รับสิทธิ์ใช้ปฏิทิน — ผู้ดูแลระบบต้องอนุญาตสิทธิ์ก่อน');}}
   calRender();
 }
+function calAbbrUI(){
+  const p=CAL.p,ts=[...new Map(CAL.ev.map(e=>[e.t.id,e.t])).values()],ms=[...new Map(CAL.ev.flatMap(e=>e.ms).map(m=>[m.id,m])).values()];
+  const miss=ms.filter(m=>!m.abbr);
+  $('cAbbr').innerHTML=`<div class="card" style="margin-bottom:10px;padding:10px 12px"><div style="font-weight:600;margin-bottom:6px">ชื่อย่อที่ใช้ในชื่อนัด <span class="muted" style="font-weight:400;font-size:12px">รูปแบบ: เข้างาน ชื่อย่อโครงการ-ชื่อย่องาน (ชื่อย่อผู้เข้าร่วม) · แก้ได้ตรงนี้ ระบบบันทึกให้ทันที</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="lbl">โครงการ</span><input class="inp" style="width:160px" maxlength="20" value="${esc(p.abbr||'')}" placeholder="${esc(projAbbr(p))}" onchange="calSetAbbr('p',null,this.value)">
+    ${ts.map(t=>`<span class="lbl" style="margin-left:6px" title="${esc(t.name)}">${esc(t.name.length>18?t.name.slice(0,18)+'…':t.name)}</span><input class="inp" style="width:150px${t.abbr?'':';border-color:var(--amber)'}" maxlength="30" value="${esc(t.abbr||'')}" placeholder="ชื่อย่องาน" onchange="calSetAbbr('t',${t.id},this.value)">`).join('')}</div>
+    ${miss.length?`<div class="c-amber" style="font-size:12px;margin-top:6px">⚠ ยังไม่ได้ตั้งชื่อย่อ: ${miss.map(m=>esc(m.name)).join(', ')} — ระบบใช้ตัวอักษรแรกแทน (ตั้งได้ที่แท็บ "บุคลากร")</div>`:''}
+    ${ts.some(t=>!t.abbr)?'<div class="c-amber" style="font-size:12px;margin-top:4px">⚠ งานที่ช่องเป็นกรอบสีส้มยังไม่มีชื่อย่อ — ระบบจะใช้ชื่องานเต็มแทน</div>':''}</div>`;
+}
+function calSetAbbr(kind,id,v){const p=CAL.p;v=String(v||'').trim();
+  if(kind==='p')p.abbr=v;else{const t=p.tasks.find(x=>x.id===id);if(t)t.abbr=v;}
+  persistProject(p);CAL.ev=calEvents(p,CAL.o);calRender();toast('บันทึกชื่อย่อแล้ว');}
 function calRender(){
+  calAbbrUI();
   const ev=CAL.ev;if(!ev.length&&!CAL.orph.length){$('cList').innerHTML='<div class="empty" style="padding:20px">ไม่มีนัดในช่วงที่เลือก — ตรวจสอบว่ามีการมอบหมายผู้รับผิดชอบในงานย่อยแล้ว</div>';return;}
   const st=e=>{const s=CAL.status[e.key];return !s?['ใหม่','blue']:s.hash===e.hash?['ลงแล้ว','green']:['มีการเปลี่ยนแปลง','amber'];};
   const cnt={n:0,c:0,u:0};ev.forEach(e=>{const s=st(e)[0];s==='ใหม่'?cnt.n++:s==='ลงแล้ว'?cnt.u++:cnt.c++;});

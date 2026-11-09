@@ -1682,7 +1682,7 @@ function buildMSPDI(p){
 function doExportMSP(){const p=proj();try{exportFile(fileBase(p)+'_MSProject.xml',buildMSPDI(p));}catch(e){console.error(e);toast('สร้างไฟล์ไม่สำเร็จ: '+e.message);}}
 
 /* ─────────── PDF REPORT ─────────── */
-const RPT_DEF={paper:'A4',orient:'landscape',company:'บริษัท เพอร์ฟอร์มแมกซ์ บิวดิ้ง เซอร์วิซ จำกัด',title:'',preparer:'',checker:'',approver:'',
+const RPT_DEF={paper:'A4',orient:'landscape',dpi:'300',company:'บริษัท เพอร์ฟอร์มแมกซ์ บิวดิ้ง เซอร์วิซ จำกัด',title:'',preparer:'',checker:'',approver:'',
   secSummary:true,secSCurve:true,secGantt:true,secNet:false,secTable:true,secDaily:false,secNotes:false,secSign:true,
   gWbs:false,gDur:true,gDates:true,gPct:true,gAsg:true,gLinks:true,gActual:true,gCrit:true,gSumOnly:false,gRange:'all',gFrom:'',gTo:'',
   tPlan:true,tCur:true,tAct:true,tPct:true,tTF:false,tPred:true,tAsg:true};
@@ -1695,6 +1695,7 @@ function openReport(){
     <div class="fr"><div class="f" style="grid-column:span 2"><label>ชื่อรายงาน</label><input data-k="title" value="${esc(o.title)}"></div>
       <div class="f"><label>ชื่อหน่วยงาน/บริษัท (หัวกระดาษ)</label><input data-k="company" value="${esc(o.company)}"></div></div>
     <div class="fr"><div class="f"><label>กระดาษ</label><select data-k="paper"><option${o.paper==='A4'?' selected':''}>A4</option><option${o.paper==='A3'?' selected':''}>A3</option></select></div>
+      <div class="f"><label>ความละเอียด (DPI)</label><select data-k="dpi">${[['150','150 dpi — ไฟล์เล็ก ใช้ดูบนจอ'],['200','200 dpi — มาตรฐาน'],['300','300 dpi — คุณภาพงานพิมพ์'],['400','400 dpi — ละเอียดสูงสุด (ไฟล์ใหญ่)']].map(([v,l])=>`<option value="${v}"${String(o.dpi)===v?' selected':''}>${l}</option>`).join('')}</select></div>
       <div class="f"><label>แนวกระดาษ</label><select data-k="orient"><option value="landscape"${o.orient==='landscape'?' selected':''}>แนวนอน</option><option value="portrait"${o.orient==='portrait'?' selected':''}>แนวตั้ง</option></select></div>
       <div class="f"><label>ช่วงเวลาของ Gantt</label><select data-k="gRange"><option value="all"${o.gRange==='all'?' selected':''}>ทั้งโครงการ</option><option value="custom"${o.gRange==='custom'?' selected':''}>กำหนดเอง</option></select></div>
       <div class="f"><label>ตั้งแต่ / ถึง (ถ้ากำหนดเอง)</label><div style="display:flex;gap:4px"><input type="date" style="min-width:0" data-k="gFrom" value="${o.gFrom}"><input type="date" style="min-width:0" data-k="gTo" value="${o.gTo}"></div></div></div>
@@ -1715,23 +1716,26 @@ function openReport(){
 function readRptForm(){const o=rptOpts();document.querySelectorAll('#rptForm [data-k]').forEach(el=>{o[el.dataset.k]=el.type==='checkbox'?el.checked:el.value;});UI.rpt=o;saveUI();return o;}
 let rptPages=[];
 async function previewReport(){const p=proj(),o=readRptForm();$('rptInfo').textContent='กำลังสร้าง…';
-  try{rptPages=await renderReport(p,o);}catch(e){console.error(e);$('rptInfo').textContent='สร้างไม่สำเร็จ: '+e.message;return;}
+  try{rptPages=await renderReport(p,o,150);}catch(e){console.error(e);$('rptInfo').textContent='สร้างไม่สำเร็จ: '+e.message;return;}
   const host=$('rptPrev');host.innerHTML='';rptPages.forEach(c=>{c.onclick=()=>c.classList.toggle('big');host.appendChild(c);});
   $('rptInfo').textContent=rptPages.length+' หน้า · คลิกที่หน้าเพื่อขยาย/ย่อ';}
 async function downloadReport(){const p=proj(),o=readRptForm();
-  try{const pages=await renderReport(p,o);const pdf=makePDF(pages,o,p);exportFile(fileBase(p)+'_แผนงาน.pdf',pdf);
+  if($('rptInfo'))$('rptInfo').textContent='กำลังสร้างไฟล์ '+(o.dpi||300)+' dpi…';await new Promise(r=>setTimeout(r,30));
+  try{const pages=await renderReport(p,o,+o.dpi||300);const pdf=makePDF(pages,o,p);pages.forEach(c=>{c.width=c.height=0;});exportFile(fileBase(p)+'_แผนงาน.pdf',pdf);
     if($('rptInfo'))$('rptInfo').textContent=pages.length+' หน้า — สร้างไฟล์แล้ว';}catch(e){console.error(e);toast('สร้าง PDF ไม่สำเร็จ: '+e.message);}}
 
-async function renderReport(p,o){
+async function renderReport(p,o,dpi){
   try{await Promise.all(['400','600','700'].map(w=>document.fonts.load(w+' 20px "IBM Plex Sans Thai"','กขค')));}catch(e){}
   const K=5; // px per mm
   let [Wm,Hm]=o.paper==='A3'?[420,297]:[297,210];if(o.orient==='portrait')[Wm,Hm]=[Hm,Wm];
   const W=Wm*K,Hh=Hm*K,M=12*K,TOP=24*K,BOT=Hh-14*K,CW=W-2*M;
+  // วาดด้วยหน่วยตรรกะ K px/mm แล้วขยายด้วย scale ตาม DPI ที่เลือก (iPhone/iPad จำกัดที่ ~16.7 ล้านพิกเซลต่อหน้า)
+  let RS=Math.max(1,(dpi||127)/25.4/K);const isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);RS=Math.min(RS,Math.sqrt((isIOS?16.7e6:34e6)/(W*Hh)));
   const FONT='"IBM Plex Sans Thai",Tahoma,sans-serif';
   const fpx=pt=>pt*0.3528*K;
   const S=sched(p),dd=p.dataDate||todayStr(),st=projStats(p),TR=tree(p);
   const pages=[];let cur=null;
-  const newPage=()=>{const c=document.createElement('canvas');c.width=W;c.height=Hh;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,W,Hh);
+  const newPage=()=>{const c=document.createElement('canvas');c.width=Math.round(W*RS);c.height=Math.round(Hh*RS);const x=c.getContext('2d');x.setTransform(RS,0,0,RS,0,0);x.imageSmoothingQuality='high';x.fillStyle='#fff';x.fillRect(0,0,W,Hh);
     // header
     x.fillStyle='#16213a';x.font=`600 ${fpx(10)}px ${FONT}`;x.textBaseline='alphabetic';x.textAlign='left';x.fillText(o.company||'',M,14*K);
     x.textAlign='right';x.fillStyle='#5b6476';x.font=`400 ${fpx(9)}px ${FONT}`;x.fillText(o.title||'',W-M,14*K);
@@ -1939,7 +1943,7 @@ function makePDF(canvases,o,p){
   obj(2,`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${n} >>`);
   obj(3,`<< /Title ${hex16(o.title||p.name)} /Producer (PRIM) /Creator (PRIM Project & Resource Integrated Management) /CreationDate (D:${todayStr().replace(/-/g,'')}000000) >>`);
   canvases.forEach((c,i)=>{const pg=4+i*3,ct=5+i*3,im=6+i*3;
-    const b64=c.toDataURL('image/jpeg',0.9).split(',')[1],bin=atob(b64),jpg=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)jpg[k]=bin.charCodeAt(k);
+    const b64=c.toDataURL('image/jpeg',0.95).split(',')[1],bin=atob(b64),jpg=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)jpg[k]=bin.charCodeAt(k);
     const cs=`q ${Wp} 0 0 ${Hp} 0 0 cm /Im0 Do Q`;
     obj(pg,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${Wp} ${Hp}] /Resources << /XObject << /Im0 ${im} 0 R >> >> /Contents ${ct} 0 R >>`);
     obj(ct,`<< /Length ${cs.length} >>`,cs);
